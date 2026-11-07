@@ -92,3 +92,8 @@ son retour.
 
 Les pouvoirs de révélation restent privés dans l'interface : les mains des
 adversaires ne sont jamais renvoyées au navigateur d'un autre joueur.
+
+Pendant une partie, la table est disposée en cercle : ton siège est en bas,
+les autres suivent dans le sens horaire. Les cartes sont affichées par image ;
+les noms des coéquipiers partagent une couleur, les noms en jeu individuel
+restent noirs, et les défausses du tour précédent apparaissent en haut à droite.

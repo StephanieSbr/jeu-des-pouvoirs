@@ -4,6 +4,22 @@ import main
 
 
 class ConfigurationMatchTests(unittest.TestCase):
+    def test_last_turn_discards_are_kept_separately_for_the_next_turn(self):
+        jeu = main.Jeu(["A", "B", "C", "D"])
+        jeu.demarrer_match({"A": 30, "B": 31, "C": 34, "D": 35})
+        partie = jeu.partie
+        partie.en_jeu = {
+            "A": main.CartePosee(main.CARTES[1], "A", "A"),
+            "B": main.CartePosee(main.CARTES[4], "B", "B"),
+            "C": main.CartePosee(main.CARTES[8], "C", "C"),
+            "D": main.CartePosee(main.CARTES[18], "D", "D"),
+        }
+        partie.joueurs_ayant_joue = {"A", "B", "C", "D"}
+
+        jeu.terminer_tour()
+
+        self.assertEqual(set(partie.dernieres_defausses), {1, 4, 8, 18})
+
     def test_four_players_keep_drawn_absolutes_and_get_five_cards(self):
         jeu = main.Jeu(["A", "B", "C", "D"])
         cartes_tirees = {"A": 30, "B": 31, "C": 34, "D": 35}
@@ -148,6 +164,27 @@ class WebSalonTests(unittest.TestCase):
                 response = client.get("/cartes/{}.png".format(score))
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.mimetype, "image/png")
+
+    def test_display_colors_match_card_colors_and_black_for_17(self):
+        from app import _couleur_affichage
+
+        expected = {
+            1: "vert",
+            9: "jaune",
+            18: "rouge",
+            30: "bleu",
+            17: "noir",
+        }
+        for score, color in expected.items():
+            with self.subTest(score=score):
+                self.assertEqual(_couleur_affichage(score), color)
+
+    def test_private_card_revelation_uses_image_without_printing_its_number(self):
+        from app import _message_revelation
+
+        message = _message_revelation("Alice", 17)
+        self.assertEqual(message["image"], "/cartes/17.png")
+        self.assertNotIn("17", message["texte"])
 
     def test_csrf_is_required_for_mutating_routes(self):
         client, _csrf = self._client()

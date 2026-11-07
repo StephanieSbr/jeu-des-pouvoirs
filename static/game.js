@@ -6,7 +6,6 @@ const roomHeader = document.getElementById("room-header");
 const notice = document.getElementById("notice");
 let lastState = "";
 let selectedCard = null;
-let privateNotice = "";
 let polling = null;
 let inRoom = false;
 
@@ -82,8 +81,41 @@ function playerOptions(state, exceptSelf = true, onlyUnplayed = false) {
     .map((player) => ({ value: player.nom, label: player.nom }));
 }
 
-function cardOptions(scores) {
-  return scores.map((score) => ({ value: score, label: `Carte ${score}` }));
+function addCardPicker(parent, labelText, cards, name) {
+  const picker = node("div", "card-picker");
+  picker.append(node("span", "picker-label", labelText));
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = name;
+  const choices = node("div", "card-choices");
+  const buttons = [];
+
+  for (const card of cards) {
+    const score = typeof card === "number" ? card : card.score;
+    const button = node("button", "card-choice");
+    button.type = "button";
+    button.setAttribute("aria-label", "Choisir cette carte");
+    const image = document.createElement("img");
+    image.src = typeof card === "number" ? `/cartes/${score}.png` : card.image;
+    image.alt = "Carte";
+    button.append(image);
+    button.addEventListener("click", () => {
+      input.value = String(score);
+      for (const choice of buttons) choice.classList.toggle("selected", choice === button);
+    });
+    buttons.push(button);
+    choices.append(button);
+  }
+
+  picker.append(input, choices);
+  parent.append(picker);
+  input.cardButtons = buttons;
+  return input;
+}
+
+function setCardPickerDisabled(input, disabled) {
+  input.disabled = disabled;
+  for (const button of input.cardButtons) button.disabled = disabled;
 }
 
 function renderLobby() {
@@ -105,44 +137,11 @@ function renderRoomHeader(state) {
   codeLine.append(copy);
   left.append(codeLine, node("p", "room-caption", `Tu joues sous le nom de ${state.vous}`));
   roomHeader.append(left);
-  roomHeader.append(node("span", "phase-label", phaseTitle(state.phase)));
+  roomHeader.append(node("span", "phase-label", "En attente"));
   const leave = node("button", "secondary", "Quitter le jeu");
   leave.type = "button";
   leave.addEventListener("click", leaveRoom);
   roomHeader.append(leave);
-}
-
-function phaseTitle(phase) {
-  return ({
-    attente: "En attente des joueurs",
-    tirage: "Tirage des équipes",
-    active: "Partie en cours",
-    choix_13: "Résolution de la carte 13",
-    entre_parties: "Fin de la partie",
-    match_termine: "Fin du match",
-  })[phase] || phase;
-}
-
-function renderPlayers(state, showTeams = true) {
-  const list = node("ul", "player-list");
-  for (const player of state.joueurs) {
-    const item = node("li", "player-item");
-    item.append(node("strong", "", player.nom));
-    let detail = "";
-    if (showTeams && player.equipe) detail = player.equipe;
-    else if (player.a_tire) detail = "Carte tirée";
-    else if (state.phase === "attente") detail = "Dans le salon";
-    if (!player.connecte) detail = "Déconnecté — en attente de son retour";
-    if (player.cartes_en_main !== undefined) {
-      detail = `${player.cartes_en_main} carte${player.cartes_en_main === 1 ? "" : "s"} en main`;
-      if (showTeams && player.equipe) detail += ` · ${player.equipe}`;
-      if (player.victoires !== undefined) detail += ` · ${player.victoires} victoire(s)`;
-    }
-    if (player.a_joue) detail += " · a joué";
-    item.append(node("span", "", detail));
-    list.append(item);
-  }
-  return list;
 }
 
 function renderWaiting(state) {
@@ -151,7 +150,11 @@ function renderWaiting(state) {
   if (state.joueurs_deconnectes.length) {
     panel.append(node("p", "notice", `En attente du retour de : ${state.joueurs_deconnectes.join(", ")}.`));
   }
-  panel.append(renderPlayers(state, false));
+  const players = node("ul", "waiting-players");
+  for (const player of state.joueurs) {
+    players.append(node("li", "", `${player.nom}${player.connecte ? "" : " — déconnecté"}`));
+  }
+  panel.append(players);
   if (state.peut_commencer) {
     const button = node("button", "", "Démarrer le match");
     button.addEventListener("click", () => runAction(() => post("/api/demarrer")));
@@ -161,68 +164,76 @@ function renderWaiting(state) {
 }
 
 function renderDraft(state) {
-  const panel = section("Tirage des équipes", `${state.tirages_valides}/${state.nombre_joueurs} tirages`);
-  panel.append(node("p", "muted", "Chaque joueur tire une carte absolue. La plus forte et la plus faible formeront une équipe."));
+  const screen = node("div", "game-screen draft-screen");
+  const toolbar = node("div", "game-toolbar");
+  const leave = node("button", "secondary", "Quitter");
+  leave.type = "button";
+  leave.addEventListener("click", leaveRoom);
+  toolbar.append(leave);
+  screen.append(toolbar);
+  const panel = node("section", "draw-panel");
+  panel.append(node("h2", "", `Tirage ${state.tirages_valides}/${state.nombre_joueurs}`));
   if (state.tirage_personnel !== null && state.tirage_personnel !== undefined) {
-    const preview = node("div", "drawn-card");
     const image = document.createElement("img");
+    image.className = "drawn-card";
     image.src = `/cartes/${state.tirage_personnel}.png`;
-    image.alt = `Carte ${state.tirage_personnel}`;
-    preview.append(
-      image,
-      node("p", "notice", `Tu as tiré la carte ${state.tirage_personnel}. Elle reste dans ta main pour cette première partie.`),
-    );
-    panel.append(preview);
+    image.alt = "Carte tirée";
+    panel.append(image);
   } else {
     const button = node("button", "", "Piocher ma carte absolue");
     button.addEventListener("click", () => runAction(() => post("/api/tirer")));
     panel.append(button);
   }
-  panel.append(renderPlayers(state, false));
-  content.append(panel);
+  screen.append(panel);
+  content.append(screen);
 }
 
-function renderScoreboard(state) {
-  const board = node("div", "scoreboard");
-  if (state.individuel) {
-    for (const [name, wins] of Object.entries(state.scores_joueurs)) {
-      board.append(node("span", "score-chip", `${name} : ${wins} victoire(s)`));
-    }
-  } else {
-    for (const [team, wins] of Object.entries(state.scores_equipes)) {
-      board.append(node("span", "score-chip", `${team} : ${wins} victoire(s)`));
-    }
+function renderTable(state) {
+  const table = node("div", "game-table");
+  table.append(node("div", "table-ring"));
+  const discards = node("aside", "discard-tray");
+  discards.setAttribute("aria-label", "Cartes défaussées au tour précédent");
+  for (const card of state.dernieres_defausses || []) {
+    discards.append(node("span", `discard-chip color-${card.couleur}`, String(card.numero)));
   }
-  return board;
-}
+  table.append(discards);
 
-function renderBoard(state) {
-  const panel = section("Cartes en jeu", `Tour ${state.numero_tour}`);
-  panel.append(node("p", "muted small", `Pioche : ${state.pioche_restante} · Défausse : ${state.defausse.length}`));
-  if (state.direction_15) panel.append(node("p", "notice", `Contrainte active : jouer ${state.direction_15}.`));
-  const grid = node("div", "board-grid");
-  for (const player of state.joueurs) {
-    const slot = node("div", "board-slot");
-    slot.append(node("strong", "", player.nom));
+  // Ancre la table sur soi, puis place les autres selon l'ordre horaire du jeu.
+  const players = [...state.joueurs];
+  const selfIndex = players.findIndex((player) => player.nom === state.vous);
+  const clockwise = [
+    ...players.slice(selfIndex),
+    ...players.slice(0, selfIndex),
+  ];
+  clockwise.forEach((player, index) => {
+    const angle = Math.PI / 2 - (2 * Math.PI * index) / clockwise.length;
+    const seat = node("article", "player-seat");
+    seat.style.left = `${50 + 34 * Math.cos(angle)}%`;
+    seat.style.top = `${50 + 34 * Math.sin(angle)}%`;
+    seat.classList.add(player.equipe === "Équipe A"
+      ? "team-a"
+      : player.equipe === "Équipe B" ? "team-b" : "individual");
+    if (player.nom === state.joueur_courant && state.phase === "active") {
+      seat.classList.add("current-turn");
+    }
+
+    const name = node("strong", "seat-name", player.nom);
+    seat.append(name, node("span", "seat-count", String(player.cartes_en_main)));
     if (player.carte_devant !== null) {
-      const img = document.createElement("img");
-      img.src = `/cartes/${player.carte_devant}.png`;
-      img.alt = `Carte ${player.carte_devant}`;
-      slot.append(img, node("span", "small muted", `Carte ${player.carte_devant}`));
+      const card = document.createElement("img");
+      card.className = "played-card";
+      card.src = `/cartes/${player.carte_devant}.png`;
+      card.alt = "Carte posée";
+      seat.append(card);
     } else {
-      slot.append(node("div", "empty-card", "＋"), node("span", "small muted", "Pas encore joué"));
+      seat.append(node("div", "empty-card"));
     }
-    grid.append(slot);
-  }
-  panel.append(grid);
-  content.append(panel);
+    table.append(seat);
+  });
+  return table;
 }
 
-function renderHand(state) {
-  const panel = section("Ta main", `${state.main.length} carte(s)`);
-  panel.append(node("p", "muted small", state.joueur_courant === state.vous
-    ? "C'est ton tour. Choisis une carte."
-    : `C'est au tour de ${state.joueur_courant || "un autre joueur"}.`));
+function renderHand(state, panel) {
   const cards = node("div", "hand");
   for (const card of state.main) {
     const button = node("button", `hand-card${selectedCard === card.score ? " selected" : ""}`);
@@ -230,8 +241,8 @@ function renderHand(state) {
     button.disabled = state.joueur_courant !== state.vous || !!state.action_en_attente;
     const img = document.createElement("img");
     img.src = card.image;
-    img.alt = `Carte ${card.score}`;
-    button.append(img, node("span", "score", String(card.score)), node("span", "power", card.pouvoir));
+    img.alt = "Carte de ta main";
+    button.append(img);
     button.addEventListener("click", () => {
       selectedCard = card.score;
       render(state, true);
@@ -242,17 +253,16 @@ function renderHand(state) {
   if (selectedCard !== null && state.joueur_courant === state.vous && !state.action_en_attente) {
     renderPlayControls(panel, state, selectedCard);
   }
-  content.append(panel);
 }
 
 function renderPlayControls(panel, state, score) {
   const controls = node("div", "controls");
-  controls.append(node("h3", "", `Jouer la carte ${score}`));
+  controls.append(node("h3", "", "Jouer cette carte"));
   const form = document.createElement("form");
   const fields = {};
   const occupiedSlots = state.cartes_en_jeu.map((card) => ({
     value: card.devant,
-    label: `${card.devant} — carte ${card.score}`,
+    label: card.devant,
   }));
   const otherPlayers = playerOptions(state);
 
@@ -274,7 +284,12 @@ function renderPlayControls(panel, state, score) {
       ? "Joueur devant lequel échanger"
       : "Carte déjà en jeu à cibler", occupiedSlots, "joueur_cible", "Choisir…");
     if (score === 29 && state.main.some((card) => card.score !== score)) {
-      fields.score_main = addSelect(controls, "Ta carte à échanger", cardOptions(state.main.filter((card) => card.score !== score).map((card) => card.score)), "score_main", "Choisir…");
+      fields.score_main = addCardPicker(
+        controls,
+        "Ta carte à échanger",
+        state.main.filter((card) => card.score !== score),
+        "score_main",
+      );
     }
   } else if (score === 24) {
     fields.joueur_cible = addSelect(controls, "Autre joueur", otherPlayers, "joueur_cible", "Choisir…");
@@ -282,14 +297,29 @@ function renderPlayControls(panel, state, score) {
       { value: "montrer une carte de ma main", label: "Je montre une carte de ma main" },
       { value: "demander une carte choisie par l'autre joueur", label: "L'autre joueur choisit une carte à me montrer" },
     ], "mode_24", "Choisir…");
-    fields.score_main = addSelect(controls, "Carte que tu montres", cardOptions(state.main.filter((card) => card.score !== score).map((card) => card.score)), "score_main", "Choisir…");
-    fields.score_main.disabled = true;
-    fields.mode_24.addEventListener("change", () => { fields.score_main.disabled = fields.mode_24.value !== "montrer une carte de ma main"; });
+    fields.score_main = addCardPicker(
+      controls,
+      "Carte que tu montres",
+      state.main.filter((card) => card.score !== score),
+      "score_main",
+    );
+    setCardPickerDisabled(fields.score_main, true);
+    fields.mode_24.addEventListener("change", () => {
+      setCardPickerDisabled(
+        fields.score_main,
+        fields.mode_24.value !== "montrer une carte de ma main",
+      );
+    });
   } else if (score >= 30 && score <= 35) {
     const ownOptions = state.main.filter((card) => card.score !== score).map((card) => card.score);
     const lastCardDraw = state.main.length === 1 && state.pioche_restante > 0;
     if (ownOptions.length) {
-      fields.score_main = addSelect(controls, "Ta carte à échanger", cardOptions(ownOptions), "score_main", "Choisir…");
+      fields.score_main = addCardPicker(
+        controls,
+        "Ta carte à échanger",
+        ownOptions,
+        "score_main",
+      );
     } else if (lastCardDraw) {
       controls.append(node("p", "muted small", "C'est ta dernière carte : tu piocheras une carte à échanger."));
     }
@@ -325,116 +355,129 @@ function renderPlayControls(panel, state, score) {
 
 function renderPending(state) {
   const action = state.action_en_attente;
-  const panel = section("Pouvoir en attente");
+  const panel = node("section", "action-panel");
   if (!action.est_cible) {
-    panel.append(node("p", "muted", `Tu attends la réponse de ${action.cible}.`));
-    content.append(panel);
-    return;
+    panel.append(node("p", "muted", `En attente de ${action.cible}.`));
+    return panel;
   }
   const text = action.type === "21"
     ? `${action.acteur} t'impose de poser une carte devant lui.`
     : action.type === "24"
       ? `${action.acteur} te demande de choisir une carte à lui montrer.`
       : action.type === "28"
-        ? `${action.acteur} renvoie la carte ${action.carte_a_remplacer} dans ta main. Choisis une autre carte à poser devant ${action.emplacement}.`
+        ? `${action.acteur} te demande de remplacer ta carte posée devant ${action.emplacement}.`
         : `${action.acteur} échange une carte avec toi. Choisis la carte de ta main à échanger.`;
   panel.append(node("p", "", text));
   const form = document.createElement("form");
-  const select = addSelect(panel, "Choisis une carte de ta main", cardOptions(state.main.map((card) => card.score)), "score", "Choisir…");
-  const button = node("button", "", "Envoyer mon choix");
+  const picker = addCardPicker(panel, "Choisis une carte", state.main, "score");
+  const button = node("button", "", "Confirmer");
   button.type = "submit";
   form.append(button);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!select.value) return showNotice("Choisis une carte.", true);
-    runAction(() => post("/api/repondre", { score: Number(select.value) }));
+    if (!picker.value) return showNotice("Choisis une carte.", true);
+    runAction(() => post("/api/repondre", { score: Number(picker.value) }));
   });
   panel.append(form);
-  content.append(panel);
+  return panel;
 }
 
 function renderChoose13(state) {
-  const panel = section("Effet de la carte 13");
+  const panel = node("section", "action-panel");
   if (!state.doit_choisir_13) {
-    panel.append(node("p", "muted", "Un autre joueur doit choisir une carte à défausser."));
-    content.append(panel);
-    return;
+    panel.append(node("p", "muted", "En attente du choix de défausse."));
+    return panel;
   }
-  panel.append(node("p", "", "Ta carte 13 a été défaussée. Choisis une carte de ta main à défausser en plus (sauf la 14)."));
+  panel.append(node("p", "", "Choisis une carte supplémentaire à défausser."));
   const form = document.createElement("form");
-  const select = addSelect(panel, "Carte supplémentaire", cardOptions(state.cartes_choix_13), "score", "Choisir…");
-  const button = node("button", "", "Défausser cette carte");
+  const choices = state.main.filter((card) => state.cartes_choix_13.includes(card.score));
+  const picker = addCardPicker(panel, "Choisir une carte", choices, "score");
+  const button = node("button", "", "Confirmer");
   button.type = "submit";
   form.append(button);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!select.value) return showNotice("Choisis une carte.", true);
-    runAction(() => post("/api/choisir-13", { score: Number(select.value) }));
+    if (!picker.value) return showNotice("Choisis une carte.", true);
+    runAction(() => post("/api/choisir-13", { score: Number(picker.value) }));
   });
   panel.append(form);
-  content.append(panel);
+  return panel;
+}
+
+function renderMatch(state) {
+  const screen = node("div", "game-screen");
+  const toolbar = node("div", "game-toolbar");
+  const leave = node("button", "secondary", "Quitter");
+  leave.type = "button";
+  leave.addEventListener("click", leaveRoom);
+  toolbar.append(leave);
+
+  if (state.messages_prives) {
+    const reveal = node("div", "private-reveal");
+    reveal.append(node("span", "", state.messages_prives.texte));
+    const image = document.createElement("img");
+    image.src = state.messages_prives.image;
+    image.alt = "Carte révélée";
+    reveal.append(image);
+    toolbar.append(reveal);
+  }
+  if (state.joueurs_deconnectes.length) {
+    toolbar.append(node(
+      "div",
+      "game-message",
+      `En attente du retour de ${state.joueurs_deconnectes.join(", ")}.`,
+    ));
+    screen.append(toolbar);
+    content.append(screen);
+    return;
+  }
+  screen.append(toolbar);
+  if (state.phase === "match_termine") {
+    const winner = state.equipe_gagnante_match || state.joueur_gagnant_match;
+    toolbar.append(node("p", "round-result", winner ? `${winner} remporte le match.` : "Match terminé."));
+  }
+
+  screen.append(renderTable(state));
+  const bottom = node("div", "game-bottom");
+  if (state.phase === "active") {
+    if (selectedCard !== null && !state.main.some((card) => card.score === selectedCard)) {
+      selectedCard = null;
+    }
+    if (state.action_en_attente) bottom.append(renderPending(state));
+    else renderHand(state, bottom);
+  } else if (state.phase === "choix_13") {
+    bottom.append(renderChoose13(state));
+  } else if (state.phase === "entre_parties" && state.peut_commencer) {
+    const button = node("button", "", "Distribuer la prochaine partie");
+    button.addEventListener("click", () => runAction(() => post("/api/prochaine-partie")));
+    bottom.append(button);
+  } else if (state.phase === "match_termine" && state.peut_nouveau_match) {
+    const button = node("button", "", "Rejouer");
+    button.addEventListener("click", () => runAction(() => post("/api/nouveau-match")));
+    bottom.append(button);
+  }
+  screen.append(bottom);
+  content.append(screen);
 }
 
 function render(state, force = false) {
   const signature = JSON.stringify(state);
   if (!force && signature === lastState) return;
   lastState = signature;
-  if (state.messages_prives) privateNotice = state.messages_prives;
   lobby.classList.add("hidden");
   gameRoot.classList.remove("hidden");
   inRoom = true;
   if (polling === null) polling = window.setInterval(refresh, 2000);
-  renderRoomHeader(state);
+
+  const isPlaying = state.phase !== "attente";
+  document.body.classList.toggle("in-game", isPlaying);
+  roomHeader.classList.toggle("hidden", isPlaying);
+  if (!isPlaying) renderRoomHeader(state);
   content.replaceChildren();
-  if (privateNotice) {
-    const message = node("div", "private-message", privateNotice);
-    content.append(message);
-  }
-  if (state.joueurs_deconnectes.length && state.phase !== "attente") {
-    const paused = section("Partie en pause");
-    paused.append(node(
-      "p",
-      "muted",
-      `En attente du retour de ${state.joueurs_deconnectes.join(", ")}. La partie reprendra lorsqu'il ou elle aura rejoint le salon avec le même nom et le même code.`,
-    ));
-    content.append(paused);
-    return;
-  }
+
   if (state.phase === "attente") renderWaiting(state);
   else if (state.phase === "tirage") renderDraft(state);
-  else if (state.phase === "entre_parties") {
-    const panel = section("Partie terminée", `${state.parties_jouees}/3`);
-    panel.append(renderScoreboard(state));
-    if (state.peut_commencer) {
-      const button = node("button", "", "Distribuer la partie suivante");
-      button.addEventListener("click", () => runAction(() => post("/api/prochaine-partie")));
-      panel.append(button);
-    } else panel.append(node("p", "muted", "Un joueur peut démarrer la prochaine partie."));
-    content.append(panel);
-  } else if (state.phase === "match_termine") {
-    const panel = section("Fin du match");
-    panel.append(node("p", "", state.equipe_gagnante_match || state.joueur_gagnant_match
-      ? `${state.equipe_gagnante_match || state.joueur_gagnant_match} remporte le match !`
-      : "Le match se termine sur une égalité après trois parties."));
-    panel.append(renderScoreboard(state));
-    if (state.peut_nouveau_match) {
-      const button = node("button", "", "Rejouer un match");
-      button.addEventListener("click", () => runAction(() => post("/api/nouveau-match")));
-      panel.append(button);
-    }
-    content.append(panel);
-  } else {
-    const summary = section("Match", `Partie ${state.numero_partie}/3`);
-    summary.append(renderScoreboard(state));
-    content.append(summary);
-    if (state.phase === "active" || state.phase === "choix_13") {
-      content.append(renderPlayers(state, true));
-      renderBoard(state);
-      if (state.phase === "choix_13") renderChoose13(state);
-      else if (state.action_en_attente) renderPending(state);
-      else renderHand(state);
-    }
-  }
+  else renderMatch(state);
 }
 
 async function refresh() {

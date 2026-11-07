@@ -57,7 +57,7 @@ class Salon:
     action_en_attente: Optional[dict] = None
     choix_13: Dict[str, int] = field(default_factory=dict)
     joueurs_qui_doivent_choisir_13: Set[str] = field(default_factory=set)
-    messages_prives: Dict[str, str] = field(default_factory=dict)
+    messages_prives: Dict[str, dict] = field(default_factory=dict)
     modifie_a: float = field(default_factory=time.time)
 
 
@@ -144,6 +144,17 @@ def _joueurs_deconnectes(salon: Salon) -> List[str]:
     return [joueur.nom for joueur in salon.joueurs if not joueur.connecte]
 
 
+def _couleur_affichage(score: int) -> str:
+    if score == 17:
+        return "noir"
+    couleurs = {"vert": "vert", "jaune": "jaune", "rouge": "rouge", "bleu": "bleu"}
+    return next(
+        couleur
+        for couleur in couleurs
+        if couleur in CARTES[score].couleurs
+    )
+
+
 def _exiger_joueurs_connectes(salon: Salon) -> None:
     absents = _joueurs_deconnectes(salon)
     if absents:
@@ -156,6 +167,13 @@ def _exiger_joueurs_connectes(salon: Salon) -> None:
 
 def _api_erreur(message: str, statut: int):
     return jsonify({"error": message}), statut
+
+
+def _message_revelation(nom: str, score: int) -> dict:
+    return {
+        "texte": "{} te montre une carte.".format(nom),
+        "image": "/cartes/{}.png".format(score),
+    }
 
 
 def _lire_json() -> dict:
@@ -245,12 +263,10 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         "code": salon.code,
         "phase": salon.phase,
         "vous": moi.nom,
-        "hote": jeton == salon.jeton_hote,
         "nombre_joueurs": salon.nombre_joueurs,
         "joueurs": [
             {
                 "nom": joueur.nom,
-                "a_tire": joueur.nom in salon.tirages,
                 "connecte": joueur.connecte,
             }
             for joueur in salon.joueurs
@@ -261,7 +277,6 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         "tirages_valides": (
             len(salon.tirages) if salon.phase == "tirage" else None
         ),
-        "equipes_revelees": salon.phase != "tirage",
         "action_en_attente": None,
     }
     if salon.phase == "attente":
@@ -274,12 +289,6 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         return etat
 
     jeu = salon.jeu
-    etat["individuel"] = jeu.individuel
-    etat["scores_equipes"] = {
-        equipe.value: jeu.victoires[equipe] for equipe in Equipe
-    }
-    etat["scores_joueurs"] = dict(jeu.victoires_joueurs)
-    etat["parties_jouees"] = jeu.parties_jouees
     etat["equipe_gagnante_match"] = (
         jeu.equipe_gagnante.value if jeu.equipe_gagnante is not None else None
     )
@@ -290,29 +299,25 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
     partie = jeu.partie
     etat.update(
         {
-            "numero_partie": partie.numero,
-            "numero_tour": partie.nombre_tours + 1,
             "joueur_courant": None,
-            "joueurs_ayant_joue": sorted(partie.joueurs_ayant_joue),
             "direction_15": (
                 partie.direction_15.value if partie.direction_15 is not None else None
             ),
             "pioche_restante": len(partie.pioche),
-            "defausse": [carte.score for carte in partie.defausse],
+            "dernieres_defausses": [
+                {"numero": score, "couleur": _couleur_affichage(score)}
+                for score in partie.dernieres_defausses
+            ],
             "cartes_en_jeu": [
                 {
                     "devant": emplacement,
-                    "proprietaire": carte_posee.proprietaire,
-                    "score": carte_posee.carte.score,
-                    "image": "/cartes/{}.png".format(carte_posee.carte.score),
                 }
-                for emplacement, carte_posee in partie.en_jeu.items()
+                for emplacement in partie.en_jeu
             ],
             "main": [
                 {
                     "score": carte.score,
                     "image": "/cartes/{}.png".format(carte.score),
-                    "pouvoir": carte.pouvoir.description,
                 }
                 for carte in next(
                     joueur for joueur in jeu.joueurs if joueur.nom == moi.nom
@@ -328,11 +333,6 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
                         partie.en_jeu[joueur.nom].carte.score
                         if joueur.nom in partie.en_jeu
                         else None
-                    ),
-                    "victoires": (
-                        jeu.victoires_joueurs[joueur.nom]
-                        if jeu.individuel
-                        else jeu.victoires[joueur.equipe]
                     ),
                 }
                 for joueur in jeu.joueurs
@@ -351,10 +351,8 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
             "type": action["type"],
             "acteur": action["acteur"],
             "cible": action["cible"],
-            "score": action["score"],
             "est_cible": jeton == action["cible_token"],
             "emplacement": action.get("emplacement"),
-            "carte_a_remplacer": action.get("carte_a_remplacer"),
         }
     if salon.phase == "choix_13" and moi.nom in salon.joueurs_qui_doivent_choisir_13:
         etat["doit_choisir_13"] = True
@@ -368,14 +366,6 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         etat["peut_commencer"] = not _joueurs_deconnectes(salon)
     if salon.phase == "match_termine":
         etat["peut_nouveau_match"] = not _joueurs_deconnectes(salon)
-        partie = jeu.partie
-        etat["vainqueur_partie"] = (
-            partie.equipe_gagnante.value
-            if partie and partie.equipe_gagnante is not None
-            else partie.joueur_gagnant
-            if partie
-            else None
-        )
     return etat
 
 
@@ -690,11 +680,14 @@ def _commencer_pose(salon: Salon, donnees: dict) -> None:
         cible_nom = donnees.get("joueur_cible")
         mode = donnees.get("mode_24")
         if mode == ModeRevelation.MONTRER_MA_CARTE.value:
-            message = "{} te montre sa carte {}.".format(joueur.nom, donnees.get("score_main"))
-            salon.messages_prives[cible_nom] = message
+            salon.messages_prives[cible_nom] = _message_revelation(
+                joueur.nom,
+                donnees["score_main"],
+            )
         elif mode == ModeRevelation.DEMANDER_CARTE.value:
-            salon.messages_prives[joueur.nom] = "{} te montre sa carte {}.".format(
-                cible_nom, donnees.get("score_main_cible")
+            salon.messages_prives[joueur.nom] = _message_revelation(
+                cible_nom,
+                donnees["score_main_cible"],
             )
     _apres_pose(salon)
 
@@ -737,8 +730,9 @@ def _repondre_action(salon: Salon, score: int) -> None:
 
     jeu.poser_carte(action["score"], choix)
     if action["type"] == "24":
-        salon.messages_prives[action["acteur"]] = "{} te montre sa carte {}.".format(
-            action["cible"], score
+        salon.messages_prives[action["acteur"]] = _message_revelation(
+            action["cible"],
+            score,
         )
     salon.action_en_attente = None
     _apres_pose(salon)

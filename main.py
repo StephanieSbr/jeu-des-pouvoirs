@@ -176,6 +176,7 @@ class EtatPartie:
     # La clé est le joueur devant lequel la carte est posée.
     en_jeu: Dict[str, CartePosee] = field(default_factory=dict)
     defausse: List[Carte] = field(default_factory=list)
+    dernieres_defausses: List[int] = field(default_factory=list)
     tour_index: int = 0
     joueurs_ayant_joue: Set[str] = field(default_factory=set)
     direction_15: Optional[DirectionScore] = None
@@ -454,6 +455,7 @@ class Jeu:
             raise RuntimeError("Il doit y avoir exactement une carte devant chaque joueur.")
 
         choix_13 = choix_13 or {}
+        defausse_avant_tour = len(partie.defausse)
         gagnante = self._determiner_gagnante(partie)
         scores_posees = {
             carte_posee.proprietaire: carte_posee.carte.score
@@ -513,6 +515,10 @@ class Jeu:
             else:
                 self._joueur_par_nom(carte_posee.proprietaire).main.append(carte_posee.carte)
 
+        # Conserve le résultat de ce tour pour l'afficher pendant le tour suivant.
+        partie.dernieres_defausses = [
+            carte.score for carte in partie.defausse[defausse_avant_tour:]
+        ]
         if 13 in scores_a_defausser:
             partie.cartes_13_a_resoudre.clear()
 
