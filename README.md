@@ -1,8 +1,8 @@
 # Jeu des pouvoirs
 
 Application web multijoueur pour 4 à 6 personnes. Le serveur applique les
-pouvoirs des cartes ; chaque joueur rejoint le même salon depuis son ordinateur
-avec un code, et ne reçoit que les cartes de sa propre main.
+pouvoirs des cartes ; chaque joueur rejoint un salon par son nom, et ne reçoit
+que les cartes de sa propre main.
 
 ## Règles de distribution implémentées
 
@@ -49,8 +49,9 @@ GitHub stocke le code ; le serveur Render exécute le jeu et sert le site.
    la configuration lue dans `render.yaml`. Le service est configuré sur
    l'offre gratuite (`plan: free`).
 4. Attends la fin du déploiement, puis ouvre l'adresse HTTPS fournie par Render.
-5. Crée un salon, choisis 4, 5 ou 6 joueurs et partage le code aux autres.
-   Chacun ouvre la même adresse, saisit son nom et rejoint le salon.
+5. Crée un salon avec un nom unique, choisis 4, 5 ou 6 joueurs et partage son
+   nom aux autres. Chacun ouvre la même adresse, saisit son nom et rejoint le
+   salon depuis la liste ou en entrant son nom.
 
 Le fichier `render.yaml` configure un seul processus web. C'est nécessaire
 pour ce prototype car les salons actifs sont conservés en mémoire. Un
@@ -68,7 +69,8 @@ dans GitHub. Si le navigateur est servi en HTTPS, active aussi
 
 ## Parcours d'une partie
 
-1. Un joueur crée un salon et attend que tous les joueurs le rejoignent.
+1. Un joueur crée un salon avec un nom unique et attend que les autres le
+   rejoignent depuis la liste des salons ouverts.
 2. Dès que le groupe est complet et connecté, le bouton de démarrage est
    disponible pour tous les joueurs.
 3. À 4 ou 5 joueurs, chacun tire une carte absolue dans le salon. Une fois le
@@ -88,13 +90,14 @@ Chaque joueur peut quitter avec le bouton **Quitter le jeu**. Fermer l'onglet
 signale aussi son départ ; si le navigateur n'envoie pas ce signal, le serveur
 le détecte après environ 12 secondes sans activité. Dans le salon d'attente, le
 joueur est retiré. En cours de match, la partie est mise en pause et ce joueur
-peut revenir avec le même nom et le code du salon ; les actions reprennent après
-son retour.
+peut revenir avec le même nom de salon et le même nom de joueur ; les actions reprennent
+après son retour. Le créateur peut clôturer son salon depuis la partie ou la
+liste des salons.
 
 Les pouvoirs de révélation restent privés dans l'interface : les mains des
 adversaires ne sont jamais renvoyées au navigateur d'un autre joueur.
 
-Pendant une partie, la table est disposée en cercle : ton siège est en bas,
-les autres suivent dans le sens horaire. Les cartes sont affichées par image ;
+Pendant une partie, les sièges suivent le sens horaire autour d'une table
+rectangulaire. Les cartes sont affichées par image ;
 les noms des coéquipiers partagent une couleur, les noms en jeu individuel
 restent noirs, et les défausses du tour précédent apparaissent en haut à droite.

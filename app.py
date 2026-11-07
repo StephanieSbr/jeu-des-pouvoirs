@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 import os
 import secrets
-import string
 import threading
 import time
 from typing import Dict, List, Optional, Set
@@ -14,7 +13,6 @@ from main import (
     CARTES,
     ChoixPouvoir,
     DirectionScore,
-    Equipe,
     Jeu,
     ModeRevelation,
 )
@@ -29,7 +27,6 @@ app.config.update(
     MAX_CONTENT_LENGTH=16 * 1024,
 )
 
-_ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _ROOMS: Dict[str, "Salon"] = {}
 _ROOMS_LOCK = threading.RLock()
 _ROOM_EXPIRATION_SECONDS = 12 * 60 * 60
@@ -46,13 +43,14 @@ class JoueurSalon:
 
 @dataclass
 class Salon:
-    code: str
+    nom: str
     nombre_joueurs: int
     joueurs: List[JoueurSalon]
     jeton_hote: str
     phase: str = "attente"
     jeu: Optional[Jeu] = None
     tirages: Dict[str, int] = field(default_factory=dict)
+    joueurs_ayant_vu_tirages: Set[str] = field(default_factory=set)
     cartes_absolues_disponibles: List[int] = field(default_factory=list)
     action_en_attente: Optional[dict] = None
     choix_13: Dict[str, int] = field(default_factory=dict)
@@ -64,19 +62,16 @@ class Salon:
 def _nettoyer_salons() -> None:
     maintenant = time.time()
     a_supprimer = [
-        code
-        for code, salon in _ROOMS.items()
+        cle
+        for cle, salon in _ROOMS.items()
         if maintenant - salon.modifie_a > _ROOM_EXPIRATION_SECONDS
     ]
-    for code in a_supprimer:
-        del _ROOMS[code]
+    for cle in a_supprimer:
+        del _ROOMS[cle]
 
 
-def _generer_code_salon() -> str:
-    while True:
-        code = "".join(secrets.choice(_ROOM_CODE_ALPHABET) for _ in range(6))
-        if code not in _ROOMS:
-            return code
+def _cle_salon(nom: str) -> str:
+    return nom.strip().casefold()
 
 
 def _marquer_joueurs_inactifs(salon: Salon, maintenant: float) -> None:
@@ -107,13 +102,14 @@ def _verifier_csrf() -> None:
 
 
 def _salon_courant() -> Salon:
-    code = session.get("room_code")
+    nom_salon = session.get("room_name")
     jeton = session.get("player_token")
-    if not isinstance(code, str) or not isinstance(jeton, str):
+    if not isinstance(nom_salon, str) or not isinstance(jeton, str):
         raise PermissionError("Rejoins un salon avant de jouer.")
-    salon = _ROOMS.get(code)
+    cle = _cle_salon(nom_salon)
+    salon = _ROOMS.get(cle)
     if salon is None:
-        session.pop("room_code", None)
+        session.pop("room_name", None)
         session.pop("player_token", None)
         raise PermissionError("Ce salon n'existe plus ou a expiré.")
     maintenant = time.time()
@@ -123,7 +119,7 @@ def _salon_courant() -> Salon:
         None,
     )
     if joueur_courant is None:
-        session.pop("room_code", None)
+        session.pop("room_name", None)
         session.pop("player_token", None)
         raise PermissionError("Cette session n'est plus membre du salon.")
     joueur_courant.connecte = True
@@ -268,7 +264,8 @@ def _apres_pose(salon: Salon) -> None:
 def _etat_public(salon: Salon, jeton: str) -> dict:
     moi = next(joueur for joueur in salon.joueurs if joueur.jeton == jeton)
     etat = {
-        "code": salon.code,
+        "nom_salon": salon.nom,
+        "peut_cloturer": jeton == salon.jeton_hote,
         "phase": salon.phase,
         "vous": moi.nom,
         "nombre_joueurs": salon.nombre_joueurs,
@@ -281,9 +278,19 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         ],
         "joueurs_deconnectes": _joueurs_deconnectes(salon),
         "messages_prives": salon.messages_prives.pop(moi.nom, None),
-        "tirage_personnel": salon.tirages.get(moi.nom),
+        "tirages_publics": (
+            [
+                {"nom": joueur.nom, "score": salon.tirages[joueur.nom]}
+                for joueur in salon.joueurs
+                if joueur.nom in salon.tirages
+            ]
+            if salon.phase in ("tirage", "revelation")
+            else []
+        ),
         "tirages_valides": (
-            len(salon.tirages) if salon.phase == "tirage" else None
+            len(salon.tirages)
+            if salon.phase in ("tirage", "revelation")
+            else None
         ),
         "action_en_attente": None,
     }
@@ -389,7 +396,7 @@ def accueil():
     return render_template(
         "index.html",
         csrf=_jeton_csrf(),
-        has_room=bool(session.get("room_code") and session.get("player_token")),
+        has_room=bool(session.get("room_name") and session.get("player_token")),
     )
 
 
@@ -415,25 +422,30 @@ def creer_salon():
         _verifier_csrf()
         donnees = _lire_json()
         nom = str(donnees.get("nom", "")).strip()
+        nom_salon = " ".join(str(donnees.get("nom_salon", "")).split())
         nombre = donnees.get("nombre_joueurs")
         if len(nom) > 24 or not nom:
             raise ValueError("Choisis un nom de joueur de 1 à 24 caractères.")
+        if len(nom_salon) > 40 or not nom_salon:
+            raise ValueError("Choisis un nom de salon de 1 à 40 caractères.")
         if nombre not in (4, 5, 6):
             raise ValueError("Choisis 4, 5 ou 6 joueurs.")
         with _ROOMS_LOCK:
             _nettoyer_salons()
-            code = _generer_code_salon()
+            cle = _cle_salon(nom_salon)
+            if cle in _ROOMS:
+                raise ValueError("Ce nom de salon est déjà utilisé.")
             jeton = secrets.token_urlsafe(32)
             salon = Salon(
-                code=code,
+                nom=nom_salon,
                 nombre_joueurs=nombre,
                 joueurs=[JoueurSalon(nom=nom, jeton=jeton)],
                 jeton_hote=jeton,
             )
-            _ROOMS[code] = salon
-            session["room_code"] = code
+            _ROOMS[cle] = salon
+            session["room_name"] = cle
             session["player_token"] = jeton
-        return jsonify({"ok": True, "code": code})
+        return jsonify({"ok": True, "nom_salon": nom_salon})
     except ValueError as erreur:
         return _api_erreur(str(erreur), 400)
 
@@ -443,15 +455,18 @@ def rejoindre_salon():
     try:
         _verifier_csrf()
         donnees = _lire_json()
-        code = str(donnees.get("code", "")).strip().upper()
+        nom_salon = " ".join(str(donnees.get("nom_salon", "")).split())
         nom = str(donnees.get("nom", "")).strip()
         if len(nom) > 24 or not nom:
             raise ValueError("Choisis un nom de joueur de 1 à 24 caractères.")
+        if len(nom_salon) > 40 or not nom_salon:
+            raise ValueError("Choisis un nom de salon valide.")
         with _ROOMS_LOCK:
             _nettoyer_salons()
-            salon = _ROOMS.get(code)
+            cle = _cle_salon(nom_salon)
+            salon = _ROOMS.get(cle)
             if salon is None:
-                raise ValueError("Code de salon invalide ou expiré.")
+                raise ValueError("Ce salon n'existe plus ou a expiré.")
             _marquer_joueurs_inactifs(salon, time.time())
             joueur_existant = next(
                 (
@@ -464,7 +479,10 @@ def rejoindre_salon():
             if joueur_existant is not None:
                 if joueur_existant.connecte:
                     raise ValueError("Ce nom est déjà utilisé dans le salon.")
+                etait_createur = joueur_existant.jeton == salon.jeton_hote
                 joueur_existant.jeton = secrets.token_urlsafe(32)
+                if etait_createur:
+                    salon.jeton_hote = joueur_existant.jeton
                 joueur_existant.connecte = True
                 joueur_existant.derniere_activite = time.time()
                 jeton = joueur_existant.jeton
@@ -476,9 +494,9 @@ def rejoindre_salon():
                 jeton = secrets.token_urlsafe(32)
                 salon.joueurs.append(JoueurSalon(nom=nom, jeton=jeton))
             salon.modifie_a = time.time()
-            session["room_code"] = code
+            session["room_name"] = cle
             session["player_token"] = jeton
-        return jsonify({"ok": True, "code": code})
+        return jsonify({"ok": True, "nom_salon": salon.nom})
     except ValueError as erreur:
         return _api_erreur(str(erreur), 400)
 
@@ -492,6 +510,62 @@ def obtenir_etat():
             return jsonify(_etat_public(salon, jeton))
     except PermissionError as erreur:
         return _api_erreur(str(erreur), 401)
+
+
+@app.get("/api/salons")
+def lister_salons():
+    with _ROOMS_LOCK:
+        _nettoyer_salons()
+        maintenant = time.time()
+        jeton = session.get("player_token")
+        salons = []
+        for salon in sorted(_ROOMS.values(), key=lambda element: element.nom.casefold()):
+            _marquer_joueurs_inactifs(salon, maintenant)
+            salons.append(
+                {
+                    "nom": salon.nom,
+                    "joueurs": len(salon.joueurs),
+                    "nombre_joueurs": salon.nombre_joueurs,
+                    "phase": salon.phase,
+                    "peut_rejoindre": (
+                        (
+                            salon.phase == "attente"
+                            and len(salon.joueurs) < salon.nombre_joueurs
+                        )
+                        or salon.phase != "attente"
+                    ),
+                    "peut_cloturer": (
+                        isinstance(jeton, str) and jeton == salon.jeton_hote
+                    ),
+                }
+            )
+        return jsonify({"salons": salons})
+
+
+@app.post("/api/cloturer")
+def cloturer_salon():
+    try:
+        _verifier_csrf()
+        donnees = _lire_json()
+        nom_salon = " ".join(str(donnees.get("nom_salon", "")).split())
+        if not nom_salon:
+            raise ValueError("Le nom du salon est obligatoire.")
+        with _ROOMS_LOCK:
+            cle = _cle_salon(nom_salon)
+            salon = _ROOMS.get(cle)
+            if salon is None:
+                raise ValueError("Ce salon n'existe plus ou a expiré.")
+            if session.get("player_token") != salon.jeton_hote:
+                raise PermissionError("Seul le créateur du salon peut le clôturer.")
+            del _ROOMS[cle]
+            if session.get("room_name") == cle:
+                session.pop("room_name", None)
+                session.pop("player_token", None)
+        return jsonify({"ok": True})
+    except PermissionError as erreur:
+        return _api_erreur(str(erreur), 403)
+    except ValueError as erreur:
+        return _api_erreur(str(erreur), 400)
 
 
 @app.post("/api/quitter")
@@ -508,14 +582,14 @@ def quitter_salon():
                         salon.joueurs[0].jeton if salon.joueurs else ""
                     )
                 if not salon.joueurs:
-                    del _ROOMS[salon.code]
+                    del _ROOMS[_cle_salon(salon.nom)]
                 else:
                     salon.modifie_a = time.time()
             else:
                 joueur.connecte = False
                 joueur.derniere_activite = time.time()
                 salon.modifie_a = time.time()
-            session.pop("room_code", None)
+            session.pop("room_name", None)
             session.pop("player_token", None)
         return jsonify({"ok": True})
     except PermissionError as erreur:
@@ -569,6 +643,30 @@ def tirer_absolue():
             score = salon.cartes_absolues_disponibles.pop(index)
             salon.tirages[joueur.nom] = score
             if len(salon.tirages) == salon.nombre_joueurs:
+                salon.phase = "revelation"
+                salon.joueurs_ayant_vu_tirages.clear()
+            salon.modifie_a = time.time()
+            return jsonify({"ok": True})
+    except PermissionError as erreur:
+        return _api_erreur(str(erreur), 403)
+    except (ValueError, RuntimeError) as erreur:
+        return _api_erreur(str(erreur), 400)
+
+
+@app.post("/api/voir-absolues")
+def confirmer_revelation_absolues():
+    try:
+        _verifier_csrf()
+        with _ROOMS_LOCK:
+            salon = _salon_courant()
+            _exiger_joueurs_connectes(salon)
+            if salon.phase != "revelation":
+                raise ValueError("Aucune révélation des cartes absolues n'est en cours.")
+            joueur = _joueur_courant_salon(salon)
+            salon.joueurs_ayant_vu_tirages.add(joueur.nom)
+            if salon.joueurs_ayant_vu_tirages == {
+                participant.nom for participant in salon.joueurs
+            }:
                 if salon.jeu is None:
                     raise RuntimeError("Le moteur du jeu n'a pas été créé.")
                 salon.jeu.demarrer_match(salon.tirages)
@@ -600,7 +698,7 @@ def _commencer_pose(salon: Salon, donnees: dict) -> None:
     score = donnees.get("score")
     if not isinstance(score, int):
         raise ValueError("Choisis une carte valide.")
-    carte = jeu._trouver_dans_main(jeu._joueur_par_nom(joueur.nom), score)
+    jeu._trouver_dans_main(jeu._joueur_par_nom(joueur.nom), score)
 
     # Certains pouvoirs attendent la décision d'un autre joueur avant d'être résolus.
     if score == 21 and donnees.get("utiliser_21") is True:
@@ -862,6 +960,7 @@ def nouveau_match():
                 raise ValueError("Le match en cours n'est pas terminé.")
             salon.jeu = Jeu([joueur.nom for joueur in salon.joueurs])
             salon.tirages.clear()
+            salon.joueurs_ayant_vu_tirages.clear()
             salon.action_en_attente = None
             salon.choix_13.clear()
             salon.joueurs_qui_doivent_choisir_13.clear()
@@ -881,7 +980,7 @@ def nouveau_match():
 
 
 @app.errorhandler(413)
-def contenu_trop_volumineux(_erreur):
+def contenu_trop_volumineux(_):
     return _api_erreur("La requête est trop volumineuse.", 413)
 
 

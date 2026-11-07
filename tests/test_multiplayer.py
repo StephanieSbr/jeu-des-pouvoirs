@@ -196,10 +196,10 @@ class WebSalonTests(unittest.TestCase):
             host,
             host_csrf,
             "/api/salons",
-            {"nom": "Alice", "nombre_joueurs": 4},
+            {"nom": "Alice", "nom_salon": "Partie test", "nombre_joueurs": 4},
         )
         self.assertEqual(response.status_code, 200)
-        code = response.get_json()["code"]
+        nom_salon = response.get_json()["nom_salon"]
 
         clients = [(host, host_csrf)]
         for name in ("Benoit", "Camille", "David"):
@@ -208,7 +208,7 @@ class WebSalonTests(unittest.TestCase):
                 client,
                 csrf,
                 "/api/rejoindre",
-                {"nom": name, "code": code},
+                {"nom": name, "nom_salon": nom_salon},
             )
             self.assertEqual(joined.status_code, 200)
             clients.append((client, csrf))
@@ -216,13 +216,37 @@ class WebSalonTests(unittest.TestCase):
         self.assertEqual(self._post(host, host_csrf, "/api/demarrer").status_code, 200)
         waiting_to_draw = host.get("/api/etat").get_json()
         self.assertEqual(waiting_to_draw["phase"], "tirage")
-        self.assertIsNone(waiting_to_draw["tirage_personnel"])
+        self.assertEqual(waiting_to_draw["tirages_publics"], [])
         self.assertEqual(waiting_to_draw["tirages_valides"], 0)
-        for client, csrf in clients:
+        for index, (client, csrf) in enumerate(clients):
             self.assertEqual(self._post(client, csrf, "/api/tirer").status_code, 200)
+            states = [client.get("/api/etat").get_json() for client, _ in clients]
+            phase = "revelation" if index == len(clients) - 1 else "tirage"
+            self.assertTrue(all(state["phase"] == phase for state in states))
+            self.assertTrue(
+                all(len(state["tirages_publics"]) == index + 1 for state in states)
+            )
+
+        states = [client.get("/api/etat").get_json() for client, _ in clients]
+        self.assertTrue(all(state["phase"] == "revelation" for state in states))
+        for state in states:
+            self.assertEqual(len(state["tirages_publics"]), 4)
+            self.assertEqual(
+                {tirage["nom"] for tirage in state["tirages_publics"]},
+                {"Alice", "Benoit", "Camille", "David"},
+            )
+        for index, (client, csrf) in enumerate(clients):
+            self.assertEqual(
+                self._post(client, csrf, "/api/voir-absolues").status_code,
+                200,
+            )
+            states = [client.get("/api/etat").get_json() for client, _ in clients]
+            phase = "active" if index == len(clients) - 1 else "revelation"
+            self.assertTrue(all(state["phase"] == phase for state in states))
 
         states = [client.get("/api/etat").get_json() for client, _ in clients]
         self.assertTrue(all(state["phase"] == "active" for state in states))
+        self.assertTrue(all(state["tirages_publics"] == [] for state in states))
         self.assertTrue(all(len(state["main"]) == 5 for state in states))
         for state in states:
             self.assertNotIn("main", state["joueurs"][0])
@@ -231,6 +255,74 @@ class WebSalonTests(unittest.TestCase):
                 + state["pioche_restante"],
                 33,
             )
+
+    def test_room_names_are_unique_case_insensitively(self):
+        owner, csrf = self._client()
+        created = self._post(
+            owner,
+            csrf,
+            "/api/salons",
+            {"nom": "Alice", "nom_salon": "Soirée", "nombre_joueurs": 4},
+        )
+        self.assertEqual(created.status_code, 200)
+
+        duplicate_client, duplicate_csrf = self._client()
+        duplicate = self._post(
+            duplicate_client,
+            duplicate_csrf,
+            "/api/salons",
+            {"nom": "Benoit", "nom_salon": "  SOIRÉE ", "nombre_joueurs": 5},
+        )
+
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertIn("déjà utilisé", duplicate.get_json()["error"])
+        listed = self._client()[0].get("/api/salons").get_json()["salons"]
+        self.assertEqual([salon["nom"] for salon in listed], ["Soirée"])
+
+    def test_only_room_creator_can_close_a_listed_room(self):
+        host, host_csrf = self._client()
+        nom_salon = self._post(
+            host,
+            host_csrf,
+            "/api/salons",
+            {"nom": "Alice", "nom_salon": "Partie publique", "nombre_joueurs": 4},
+        ).get_json()["nom_salon"]
+        clients = [(host, host_csrf)]
+        for name in ("Benoit", "Camille", "David"):
+            client, csrf = self._client()
+            response = self._post(
+                client,
+                csrf,
+                "/api/rejoindre",
+                {"nom": name, "nom_salon": nom_salon},
+            )
+            self.assertEqual(response.status_code, 200)
+            clients.append((client, csrf))
+
+        self.assertEqual(self._post(host, host_csrf, "/api/demarrer").status_code, 200)
+        listing = clients[1][0].get("/api/salons").get_json()["salons"]
+        self.assertEqual(len(listing), 1)
+        self.assertEqual(listing[0]["phase"], "tirage")
+        self.assertEqual(listing[0]["nom"], nom_salon)
+        self.assertFalse(listing[0]["peut_cloturer"])
+
+        forbidden = self._post(
+            clients[1][0],
+            clients[1][1],
+            "/api/cloturer",
+            {"nom_salon": nom_salon},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        closed = self._post(
+            host,
+            host_csrf,
+            "/api/cloturer",
+            {"nom_salon": nom_salon},
+        )
+        self.assertEqual(closed.status_code, 200)
+        self.assertEqual(host.get("/api/salons").get_json()["salons"], [])
+        self.assertEqual(clients[1][0].get("/api/etat").status_code, 401)
 
     def test_every_card_image_is_served(self):
         client = self.app.test_client()
@@ -248,8 +340,8 @@ class WebSalonTests(unittest.TestCase):
 
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-8", response.data)
-        self.assertIn(b"style.css?v=20261107-8", response.data)
+        self.assertIn(b"game.js?v=20261107-11", response.data)
+        self.assertIn(b"style.css?v=20261107-11", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage
@@ -273,7 +365,7 @@ class WebSalonTests(unittest.TestCase):
         self.assertNotIn("17", message["texte"])
 
     def test_csrf_is_required_for_mutating_routes(self):
-        client, _csrf = self._client()
+        client, _ = self._client()
         response = client.post(
             "/api/salons",
             json={"nom": "Alice", "nombre_joueurs": 4},
@@ -283,7 +375,6 @@ class WebSalonTests(unittest.TestCase):
 
     def test_any_connected_player_can_start_a_full_room(self):
         clients = []
-        code = None
         for index, name in enumerate(("Alice", "Benoit", "Camille", "David")):
             client, csrf = self._client()
             if index == 0:
@@ -291,15 +382,19 @@ class WebSalonTests(unittest.TestCase):
                     client,
                     csrf,
                     "/api/salons",
-                    {"nom": name, "nombre_joueurs": 4},
+                    {
+                        "nom": name,
+                        "nom_salon": "Salon de test",
+                        "nombre_joueurs": 4,
+                    },
                 )
-                code = response.get_json()["code"]
+                nom_salon = response.get_json()["nom_salon"]
             else:
                 self._post(
                     client,
                     csrf,
                     "/api/rejoindre",
-                    {"nom": name, "code": code},
+                    {"nom": name, "nom_salon": nom_salon},
                 )
             clients.append((client, csrf))
 
@@ -313,11 +408,16 @@ class WebSalonTests(unittest.TestCase):
             host,
             host_csrf,
             "/api/salons",
-            {"nom": "Alice", "nombre_joueurs": 4},
+            {"nom": "Alice", "nom_salon": "Salon ouvert", "nombre_joueurs": 4},
         )
-        code = created.get_json()["code"]
+        nom_salon = created.get_json()["nom_salon"]
         guest, guest_csrf = self._client()
-        self._post(guest, guest_csrf, "/api/rejoindre", {"nom": "Benoit", "code": code})
+        self._post(
+            guest,
+            guest_csrf,
+            "/api/rejoindre",
+            {"nom": "Benoit", "nom_salon": nom_salon},
+        )
 
         self.assertEqual(self._post(guest, guest_csrf, "/api/quitter").status_code, 200)
         newcomer, newcomer_csrf = self._client()
@@ -325,23 +425,28 @@ class WebSalonTests(unittest.TestCase):
             newcomer,
             newcomer_csrf,
             "/api/rejoindre",
-            {"nom": "Camille", "code": code},
+            {"nom": "Camille", "nom_salon": nom_salon},
         )
         self.assertEqual(joined.status_code, 200)
         self.assertEqual(len(host.get("/api/etat").get_json()["joueurs"]), 2)
 
     def test_depart_during_match_pauses_until_same_player_rejoins(self):
         host, host_csrf = self._client()
-        code = self._post(
+        nom_salon = self._post(
             host,
             host_csrf,
             "/api/salons",
-            {"nom": "Alice", "nombre_joueurs": 4},
-        ).get_json()["code"]
+            {"nom": "Alice", "nom_salon": "Partie active", "nombre_joueurs": 4},
+        ).get_json()["nom_salon"]
         clients = [(host, host_csrf, "Alice")]
         for name in ("Benoit", "Camille", "David"):
             client, csrf = self._client()
-            self._post(client, csrf, "/api/rejoindre", {"nom": name, "code": code})
+            self._post(
+                client,
+                csrf,
+                "/api/rejoindre",
+                {"nom": name, "nom_salon": nom_salon},
+            )
             clients.append((client, csrf, name))
         self._post(host, host_csrf, "/api/demarrer")
 
@@ -362,7 +467,7 @@ class WebSalonTests(unittest.TestCase):
             returned,
             returned_csrf,
             "/api/rejoindre",
-            {"nom": name, "code": code},
+            {"nom": name, "nom_salon": nom_salon},
         )
         self.assertEqual(joined.status_code, 200)
         resumed_state = host.get("/api/etat").get_json()

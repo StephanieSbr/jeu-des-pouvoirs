@@ -4,10 +4,17 @@ const gameRoot = document.getElementById("game");
 const content = document.getElementById("content");
 const roomHeader = document.getElementById("room-header");
 const notice = document.getElementById("notice");
+const roomList = document.getElementById("room-list");
+const roomDirectoryEmpty = document.getElementById("room-directory-empty");
+const roomDirectoryCount = document.getElementById("room-directory-count");
+const joinRoomName = document.getElementById("join-room-name");
 let lastState = "";
 let selectedCard = null;
 let polling = null;
+let lobbyPolling = null;
 let inRoom = false;
+let revelationTimer = null;
+let revelationKey = null;
 
 function showNotice(message, error = false) {
   notice.replaceChildren();
@@ -119,25 +126,38 @@ function setCardPickerDisabled(input, disabled) {
 }
 
 function renderLobby() {
+  clearRevelationTimer();
+  document.body.classList.remove("in-game");
+  roomHeader.classList.add("hidden");
   gameRoot.classList.add("hidden");
   lobby.classList.remove("hidden");
+  if (lobbyPolling === null) {
+    refreshLobby();
+    lobbyPolling = window.setInterval(refreshLobby, 5000);
+  }
 }
 
 function renderRoomHeader(state) {
   roomHeader.replaceChildren();
   const left = document.createElement("div");
-  left.append(node("div", "eyebrow", "SALON PRIVÉ"));
-  const codeLine = node("div", "room-code", state.code);
+  left.append(node("div", "eyebrow", "SALON"));
+  const nameLine = node("div", "room-name", state.nom_salon);
   const copy = node("button", "ghost", "Copier");
   copy.type = "button";
   copy.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(state.code);
-    showNotice("Code copié. Envoie-le aux autres joueurs.");
+    await navigator.clipboard.writeText(state.nom_salon);
+    showNotice("Nom du salon copié. Envoie-le aux autres joueurs.");
   });
-  codeLine.append(copy);
-  left.append(codeLine, node("p", "room-caption", `Tu joues sous le nom de ${state.vous}`));
+  nameLine.append(copy);
+  left.append(nameLine, node("p", "room-caption", `Tu joues sous le nom de ${state.vous}`));
   roomHeader.append(left);
   roomHeader.append(node("span", "phase-label", "En attente"));
+  if (state.peut_cloturer) {
+    const close = node("button", "danger", "Clôturer le salon");
+    close.type = "button";
+    close.addEventListener("click", () => closeRoom(state.nom_salon));
+    roomHeader.append(close);
+  }
   const leave = node("button", "secondary", "Quitter le jeu");
   leave.type = "button";
   leave.addEventListener("click", leaveRoom);
@@ -146,7 +166,7 @@ function renderRoomHeader(state) {
 
 function renderWaiting(state) {
   const panel = section("Les joueurs", `${state.joueurs.length}/${state.nombre_joueurs}`);
-  panel.append(node("p", "muted", "Partage le code du salon. N'importe quel joueur peut démarrer lorsque le groupe est complet et connecté."));
+  panel.append(node("p", "muted", `Partage le nom « ${state.nom_salon} ». N'importe quel joueur peut démarrer lorsque le groupe est complet et connecté.`));
   if (state.joueurs_deconnectes.length) {
     panel.append(node("p", "notice", `En attente du retour de : ${state.joueurs_deconnectes.join(", ")}.`));
   }
@@ -166,26 +186,94 @@ function renderWaiting(state) {
 function renderDraft(state) {
   const screen = node("div", "game-screen draft-screen");
   const toolbar = node("div", "game-toolbar");
+  if (state.peut_cloturer) {
+    const close = node("button", "danger", "Clôturer le salon");
+    close.type = "button";
+    close.addEventListener("click", () => closeRoom(state.nom_salon));
+    toolbar.append(close);
+  }
   const leave = node("button", "secondary", "Quitter");
   leave.type = "button";
   leave.addEventListener("click", leaveRoom);
   toolbar.append(leave);
   screen.append(toolbar);
   const panel = node("section", "draw-panel");
-  panel.append(node("h2", "", `Tirage ${state.tirages_valides}/${state.nombre_joueurs}`));
-  if (state.tirage_personnel !== null && state.tirage_personnel !== undefined) {
+  const revelationEnCours = state.phase === "revelation";
+  panel.append(node(
+    "h2",
+    "",
+    revelationEnCours
+      ? "Révélation des cartes absolues"
+      : `Tirage ${state.tirages_valides}/${state.nombre_joueurs}`,
+  ));
+  const tirages = node("div", "absolute-draws");
+  for (const tirage of state.tirages_publics) {
+    const resultat = node("article", "absolute-draw");
+    resultat.append(node("strong", "", tirage.nom));
     const image = document.createElement("img");
-    image.className = "drawn-card";
-    image.src = `/cartes/${state.tirage_personnel}.png`;
-    image.alt = "Carte tirée";
-    panel.append(image);
+    image.src = `/cartes/${tirage.score}.png`;
+    image.alt = `Carte absolue tirée par ${tirage.nom}`;
+    resultat.append(image);
+    tirages.append(resultat);
+  }
+  if (tirages.childElementCount) {
+    panel.append(tirages);
+  }
+  if (revelationEnCours) {
+    if (state.joueurs_deconnectes.length) {
+      if (revelationTimer !== null) window.clearTimeout(revelationTimer);
+      revelationTimer = null;
+      revelationKey = null;
+      panel.append(node(
+        "p",
+        "muted",
+        `En attente du retour de ${state.joueurs_deconnectes.join(", ")}.`,
+      ));
+    } else {
+      programmerConfirmationRevelation(state);
+    }
   } else {
-    const button = node("button", "", "Piocher ma carte absolue");
-    button.addEventListener("click", () => runAction(() => post("/api/tirer")));
-    panel.append(button);
+    const tiragePersonnel = state.tirages_publics.find(
+      (tirage) => tirage.nom === state.vous,
+    );
+    if (tiragePersonnel) {
+      panel.append(node(
+        "p",
+        "muted",
+        `Tu as tiré la carte ${tiragePersonnel.score}.`,
+      ));
+    } else {
+      const button = node("button", "", "Piocher ma carte absolue");
+      button.addEventListener("click", () => runAction(() => post("/api/tirer")));
+      panel.append(button);
+    }
   }
   screen.append(panel);
   content.append(screen);
+}
+
+function programmerConfirmationRevelation(state) {
+  const key = `${state.nom_salon}:${JSON.stringify(state.tirages_publics)}`;
+  if (revelationKey === key) return;
+  if (revelationTimer !== null) window.clearTimeout(revelationTimer);
+  revelationKey = key;
+  revelationTimer = window.setTimeout(async () => {
+    revelationTimer = null;
+    try {
+      await post("/api/voir-absolues");
+      await refresh();
+    } catch (error) {
+      revelationKey = null;
+      showNotice(error.message, true);
+      await refresh();
+    }
+  }, 2000);
+}
+
+function clearRevelationTimer() {
+  if (revelationTimer !== null) window.clearTimeout(revelationTimer);
+  revelationTimer = null;
+  revelationKey = null;
 }
 
 function renderTable(state) {
@@ -220,19 +308,15 @@ function renderTable(state) {
     ...players.slice(selfIndex),
     ...players.slice(0, selfIndex),
   ];
-  const layoutWidth = window.innerWidth <= 760 ? 900 : window.innerWidth;
-  const seatWidth = window.innerWidth <= 760
-    ? Math.min(210, Math.max(150, window.innerWidth * 0.34))
-    : Math.min(290, Math.max(200, layoutWidth * 0.21));
-  const horizontalRadius = Math.min(
-    window.innerWidth <= 760 ? 28 : 39,
-    50 - ((seatWidth / 2 + 8) / layoutWidth) * 100,
-  );
+  const positions = {
+    4: [[50, 82], [8, 50], [50, 18], [92, 50]],
+    5: [[50, 82], [8, 58], [25, 18], [75, 18], [92, 58]],
+    6: [[50, 82], [8, 66], [8, 26], [50, 18], [92, 26], [92, 66]],
+  }[clockwise.length];
   clockwise.forEach((player, index) => {
-    const angle = Math.PI / 2 + (2 * Math.PI * index) / clockwise.length;
     const seat = node("article", "player-seat");
-    seat.style.left = `${50 + horizontalRadius * Math.cos(angle)}%`;
-    seat.style.top = `${50 + 20 * Math.sin(angle)}%`;
+    seat.style.left = `${positions[index][0]}%`;
+    seat.style.top = `${positions[index][1]}%`;
     seat.classList.add(player.equipe === "Équipe A"
       ? "team-a"
       : player.equipe === "Équipe B" ? "team-b" : "individual");
@@ -443,6 +527,12 @@ function renderMatch(state) {
   const leave = node("button", "secondary", "Quitter");
   leave.type = "button";
   leave.addEventListener("click", leaveRoom);
+  if (state.peut_cloturer) {
+    const close = node("button", "danger", "Clôturer le salon");
+    close.type = "button";
+    close.addEventListener("click", closeRoom);
+    toolbar.append(close);
+  }
   toolbar.append(leave);
 
   if (state.messages_prives) {
@@ -501,6 +591,10 @@ function render(state, force = false) {
   gameRoot.classList.remove("hidden");
   inRoom = true;
   if (polling === null) polling = window.setInterval(refresh, 2000);
+  if (lobbyPolling !== null) {
+    window.clearInterval(lobbyPolling);
+    lobbyPolling = null;
+  }
 
   const isPlaying = state.phase !== "attente";
   document.body.classList.toggle("in-game", isPlaying);
@@ -509,8 +603,9 @@ function render(state, force = false) {
   content.replaceChildren();
 
   if (state.phase === "attente") renderWaiting(state);
-  else if (state.phase === "tirage") renderDraft(state);
+  else if (state.phase === "tirage" || state.phase === "revelation") renderDraft(state);
   else renderMatch(state);
+  if (state.phase !== "revelation") clearRevelationTimer();
 }
 
 async function refresh() {
@@ -528,6 +623,87 @@ async function refresh() {
     const state = await response.json();
     if (!response.ok) throw new Error(state.error || "Impossible de charger le salon.");
     render(state);
+  } catch (error) {
+    showNotice(error.message, true);
+  }
+}
+
+async function refreshLobby() {
+  try {
+    const response = await fetch("/api/salons", { credentials: "same-origin" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Impossible de charger les salons.");
+    renderRoomList(result.salons);
+  } catch (error) {
+    roomDirectoryEmpty.textContent = error.message;
+  }
+}
+
+function renderRoomList(salons) {
+  roomList.replaceChildren();
+  roomDirectoryCount.textContent = `${salons.length} salon${salons.length === 1 ? "" : "s"}`;
+  roomDirectoryEmpty.classList.toggle("hidden", salons.length > 0);
+  if (!salons.length) {
+    roomDirectoryEmpty.textContent = "Aucun salon ouvert pour le moment.";
+    return;
+  }
+  const phases = {
+    attente: "En attente",
+    tirage: "Tirage des équipes",
+    revelation: "Révélation des équipes",
+    active: "Partie en cours",
+    choix_13: "Choix en cours",
+    entre_parties: "Entre deux parties",
+    match_termine: "Match terminé",
+  };
+  for (const salon of salons) {
+    const item = node("li", "room-list-item");
+    const details = node("div", "room-list-details");
+    const joinLabel = salon.phase === "attente"
+      ? salon.peut_rejoindre ? "Rejoindre" : "Complet"
+      : "Retrouver";
+    details.append(node("strong", "", salon.nom));
+    details.append(node(
+      "span",
+      "muted",
+      `${salon.joueurs}/${salon.nombre_joueurs} joueurs · ${phases[salon.phase] || salon.phase}`,
+    ));
+    item.append(details);
+    const join = node(
+      "button",
+      salon.phase === "attente" && !salon.peut_rejoindre ? "ghost" : "secondary",
+      joinLabel,
+    );
+    join.type = "button";
+    join.disabled = salon.phase === "attente" && !salon.peut_rejoindre;
+    join.addEventListener("click", () => {
+      joinRoomName.value = salon.nom;
+      document.querySelector('#join-form input[name="nom"]').focus();
+    });
+    item.append(join);
+    if (salon.peut_cloturer) {
+      const close = node("button", "danger", "Clôturer");
+      close.type = "button";
+      close.addEventListener("click", () => closeRoom(salon.nom));
+      item.append(close);
+    }
+    roomList.append(item);
+  }
+}
+
+async function closeRoom(nomSalon) {
+  if (!window.confirm(`Clôturer le salon « ${nomSalon || "ce salon"} » ?`)) return;
+  try {
+    await post("/api/cloturer", { nom_salon: nomSalon });
+    if (polling !== null) {
+      window.clearInterval(polling);
+      polling = null;
+    }
+    inRoom = false;
+    lastState = "";
+    renderLobby();
+    showNotice("Le salon a été clôturé.");
+    await refreshLobby();
   } catch (error) {
     showNotice(error.message, true);
   }
@@ -565,6 +741,7 @@ document.getElementById("create-form").addEventListener("submit", (event) => {
   const form = new FormData(event.currentTarget);
   runAction(() => post("/api/salons", {
     nom: form.get("nom"),
+    nom_salon: form.get("nom_salon"),
     nombre_joueurs: Number(form.get("nombre_joueurs")),
   }));
 });
@@ -574,13 +751,15 @@ document.getElementById("join-form").addEventListener("submit", (event) => {
   const form = new FormData(event.currentTarget);
   runAction(() => post("/api/rejoindre", {
     nom: form.get("nom"),
-    code: form.get("code"),
+    nom_salon: form.get("nom_salon"),
   }));
 });
 
 if (document.querySelector('meta[name="has-room"]').content === "true") refresh();
+else renderLobby();
 
 window.addEventListener("pagehide", () => {
+  if (revelationTimer !== null) window.clearTimeout(revelationTimer);
   if (!inRoom) return;
   const payload = new Blob([JSON.stringify({ csrf })], {
     type: "application/json",

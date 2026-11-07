@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="has-room" content="{{ 'true' if has_room else 'false' }}">
   <title>Jeu des pouvoirs</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261107-8') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261107-11') }}">
 </head>
 <body>
   <header class="site-header">
@@ -20,10 +20,13 @@
     <section id="lobby" class="panel lobby-panel">
       <p class="eyebrow">JOUER À DISTANCE</p>
       <h2>Rejoins tes joueurs</h2>
-      <p class="intro">Crée un salon et partage son code avec les autres joueurs.</p>
+      <p class="intro">Crée un salon avec un nom unique ou choisis un salon existant dans la liste.</p>
       <div class="lobby-grid">
         <form id="create-form" class="form-card">
           <h3>Créer un salon</h3>
+          <label>Nom du salon
+            <input name="nom_salon" maxlength="40" autocomplete="off" required>
+          </label>
           <label>Ton nom
             <input name="nom" maxlength="24" autocomplete="nickname" required>
           </label>
@@ -41,12 +44,20 @@
           <label>Ton nom
             <input name="nom" maxlength="24" autocomplete="nickname" required>
           </label>
-          <label>Code du salon
-            <input name="code" maxlength="6" autocapitalize="characters" required>
+          <label>Nom du salon
+            <input id="join-room-name" name="nom_salon" maxlength="40" autocomplete="off" required>
           </label>
           <button type="submit" class="secondary">Rejoindre</button>
         </form>
       </div>
+      <section class="room-directory" aria-labelledby="room-directory-title">
+        <div class="section-heading">
+          <h3 id="room-directory-title">Salons ouverts</h3>
+          <span id="room-directory-count" class="muted"></span>
+        </div>
+        <p id="room-directory-empty" class="muted">Chargement des salons…</p>
+        <ul id="room-list" class="room-list"></ul>
+      </section>
     </section>
 
     <section id="game" class="hidden">
@@ -57,8 +68,8 @@
   </main>
   <footer>
     <span>Chaque joueur ne voit que sa propre main.</span>
-    <span>Garde le code du salon privé.</span>
+    <span>Partage le nom de ton salon avec les autres joueurs.</span>
   </footer>
-  <script src="{{ url_for('static', filename='game.js', v='20261107-8') }}" defer></script>
+  <script src="{{ url_for('static', filename='game.js', v='20261107-11') }}" defer></script>
 </body>
 </html>
