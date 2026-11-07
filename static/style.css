@@ -82,6 +82,9 @@ button.ghost { border: 1px solid var(--line); color: var(--ink); background: whi
 .board-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; }
 .board-slot { min-height: 168px; padding: 12px; border: 1px dashed #cfd7ce; border-radius: 14px; text-align: center; background: #f9faf6; }
 .board-slot img { display: block; width: 78px; height: 112px; margin: 5px auto; object-fit: contain; }
+.drawn-card { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
+.drawn-card img { width: 112px; height: 160px; object-fit: contain; }
+.drawn-card p { margin: 0; }
 .board-slot .empty-card { display: grid; width: 68px; height: 100px; margin: 12px auto; place-items: center; border: 1px solid #dbe1d8; border-radius: 9px; color: #9aa89e; background: white; font-size: 1.5rem; }
 .hand { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
 .hand-card { width: 122px; padding: 8px; border: 2px solid transparent; border-radius: 13px; color: var(--ink); background: white; box-shadow: 0 4px 14px rgba(20, 45, 31, .09); text-align: left; }
@@ -106,6 +109,7 @@ footer { display: flex; justify-content: center; gap: 18px; padding: 20px; color
   .room-header { align-items: start; flex-direction: column; }
   .hand-card { width: calc(33.3% - 9px); min-width: 95px; }
   .hand-card img { height: 120px; }
+  .drawn-card { align-items: start; flex-direction: column; }
   .controls .control-grid { grid-template-columns: 1fr; }
   footer { flex-direction: column; align-items: center; gap: 4px; }
 }

@@ -123,6 +123,10 @@ class WebSalonTests(unittest.TestCase):
             clients.append((client, csrf))
 
         self.assertEqual(self._post(host, host_csrf, "/api/demarrer").status_code, 200)
+        waiting_to_draw = host.get("/api/etat").get_json()
+        self.assertEqual(waiting_to_draw["phase"], "tirage")
+        self.assertIsNone(waiting_to_draw["tirage_personnel"])
+        self.assertEqual(waiting_to_draw["tirages_valides"], 0)
         for client, csrf in clients:
             self.assertEqual(self._post(client, csrf, "/api/tirer").status_code, 200)
 
@@ -136,6 +140,14 @@ class WebSalonTests(unittest.TestCase):
                 + state["pioche_restante"],
                 35,
             )
+
+    def test_every_card_image_is_served(self):
+        client = self.app.test_client()
+        for score in range(1, 36):
+            with self.subTest(score=score):
+                response = client.get("/cartes/{}.png".format(score))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.mimetype, "image/png")
 
     def test_csrf_is_required_for_mutating_routes(self):
         client, _csrf = self._client()

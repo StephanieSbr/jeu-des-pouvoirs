@@ -258,6 +258,9 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
         "joueurs_deconnectes": _joueurs_deconnectes(salon),
         "messages_prives": salon.messages_prives.pop(moi.nom, None),
         "tirage_personnel": salon.tirages.get(moi.nom),
+        "tirages_valides": (
+            len(salon.tirages) if salon.phase == "tirage" else None
+        ),
         "equipes_revelees": salon.phase != "tirage",
         "action_en_attente": None,
     }
@@ -361,8 +364,6 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
     else:
         etat["doit_choisir_13"] = False
 
-    if salon.phase == "tirage":
-        etat["tirages_valides"] = len(salon.tirages)
     if salon.phase == "entre_parties":
         etat["peut_commencer"] = not _joueurs_deconnectes(salon)
     if salon.phase == "match_termine":

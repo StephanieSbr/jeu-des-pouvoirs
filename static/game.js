@@ -163,8 +163,16 @@ function renderWaiting(state) {
 function renderDraft(state) {
   const panel = section("Tirage des équipes", `${state.tirages_valides}/${state.nombre_joueurs} tirages`);
   panel.append(node("p", "muted", "Chaque joueur tire une carte absolue. La plus forte et la plus faible formeront une équipe."));
-  if (state.tirage_personnel !== undefined) {
-    panel.append(node("p", "notice", `Tu as tiré la carte ${state.tirage_personnel}. Elle reste dans ta main pour cette première partie.`));
+  if (state.tirage_personnel !== null && state.tirage_personnel !== undefined) {
+    const preview = node("div", "drawn-card");
+    const image = document.createElement("img");
+    image.src = `/cartes/${state.tirage_personnel}.png`;
+    image.alt = `Carte ${state.tirage_personnel}`;
+    preview.append(
+      image,
+      node("p", "notice", `Tu as tiré la carte ${state.tirage_personnel}. Elle reste dans ta main pour cette première partie.`),
+    );
+    panel.append(preview);
   } else {
     const button = node("button", "", "Piocher ma carte absolue");
     button.addEventListener("click", () => runAction(() => post("/api/tirer")));
