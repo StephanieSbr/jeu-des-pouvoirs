@@ -205,11 +205,19 @@ function renderTable(state) {
     ...players.slice(selfIndex),
     ...players.slice(0, selfIndex),
   ];
+  const layoutWidth = window.innerWidth <= 760 ? 900 : window.innerWidth;
+  const seatWidth = window.innerWidth <= 760
+    ? Math.min(210, Math.max(150, window.innerWidth * 0.34))
+    : Math.min(290, Math.max(200, layoutWidth * 0.21));
+  const horizontalRadius = Math.min(
+    window.innerWidth <= 760 ? 28 : 39,
+    50 - ((seatWidth / 2 + 8) / layoutWidth) * 100,
+  );
   clockwise.forEach((player, index) => {
     const angle = Math.PI / 2 - (2 * Math.PI * index) / clockwise.length;
     const seat = node("article", "player-seat");
-    seat.style.left = `${50 + 39 * Math.cos(angle)}%`;
-    seat.style.top = `${50 + 23 * Math.sin(angle)}%`;
+    seat.style.left = `${50 + horizontalRadius * Math.cos(angle)}%`;
+    seat.style.top = `${50 + 20 * Math.sin(angle)}%`;
     seat.classList.add(player.equipe === "Équipe A"
       ? "team-a"
       : player.equipe === "Équipe B" ? "team-b" : "individual");
