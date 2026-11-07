@@ -25,7 +25,7 @@ class ConfigurationMatchTests(unittest.TestCase):
         cartes_tirees = {"A": 30, "B": 31, "C": 34, "D": 35}
         partie = jeu.demarrer_match(cartes_tirees)
 
-        self.assertEqual(len(partie.pioche), 15)
+        self.assertEqual(len(partie.pioche), 13)
         self.assertEqual({joueur.nom: len(joueur.main) for joueur in jeu.joueurs}, {
             "A": 5,
             "B": 5,
@@ -43,6 +43,17 @@ class ConfigurationMatchTests(unittest.TestCase):
             len({carte.score for joueur in jeu.joueurs for carte in joueur.main}),
             20,
         )
+        cartes_en_jeu = {
+            carte.score for joueur in jeu.joueurs for carte in joueur.main
+        } | {carte.score for carte in partie.pioche}
+        absolues_tirees = set(cartes_tirees.values())
+        self.assertTrue(absolues_tirees <= cartes_en_jeu)
+        self.assertFalse(({30, 31, 32, 33, 34, 35} - absolues_tirees) & cartes_en_jeu)
+        for joueur in jeu.joueurs:
+            absolues_en_main = {
+                carte.score for carte in joueur.main if carte.score in absolues_tirees
+            }
+            self.assertEqual(absolues_en_main, {cartes_tirees[joueur.nom]})
 
     def test_five_players_have_two_small_and_three_large_hands(self):
         jeu = main.Jeu(["A", "B", "C", "D", "E"])
@@ -52,7 +63,7 @@ class ConfigurationMatchTests(unittest.TestCase):
         for joueur in jeu.joueurs:
             taille_par_equipe.setdefault(joueur.equipe, set()).add(len(joueur.main))
 
-        self.assertEqual(len(partie.pioche), 12)
+        self.assertEqual(len(partie.pioche), 11)
         self.assertEqual(
             sorted(len(joueurs) for joueurs in (
                 [j for j in jeu.joueurs if j.equipe is equipe]
@@ -154,7 +165,7 @@ class WebSalonTests(unittest.TestCase):
             self.assertEqual(
                 sum(player["cartes_en_main"] for player in state["joueurs"])
                 + state["pioche_restante"],
-                35,
+                33,
             )
 
     def test_every_card_image_is_served(self):
@@ -167,8 +178,8 @@ class WebSalonTests(unittest.TestCase):
 
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-1", response.data)
-        self.assertIn(b"style.css?v=20261107-1", response.data)
+        self.assertIn(b"game.js?v=20261107-2", response.data)
+        self.assertIn(b"style.css?v=20261107-2", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage

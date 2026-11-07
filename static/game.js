@@ -208,8 +208,8 @@ function renderTable(state) {
   clockwise.forEach((player, index) => {
     const angle = Math.PI / 2 - (2 * Math.PI * index) / clockwise.length;
     const seat = node("article", "player-seat");
-    seat.style.left = `${50 + 34 * Math.cos(angle)}%`;
-    seat.style.top = `${50 + 34 * Math.sin(angle)}%`;
+    seat.style.left = `${50 + 39 * Math.cos(angle)}%`;
+    seat.style.top = `${50 + 23 * Math.sin(angle)}%`;
     seat.classList.add(player.equipe === "Équipe A"
       ? "team-a"
       : player.equipe === "Équipe B" ? "team-b" : "individual");

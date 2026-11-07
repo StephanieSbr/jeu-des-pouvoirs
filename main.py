@@ -291,9 +291,12 @@ class Jeu:
             )
             for joueur in self.joueurs
         }
-        pioche = list(CARTES.values())
-        for valeur in valeurs:
-            pioche.remove(CARTES[valeur])
+        # Les absolues non tirées restent hors de la première partie.
+        pioche = [
+            carte
+            for score, carte in CARTES.items()
+            if score not in _CARTES_ABSOLUES
+        ]
         random.shuffle(pioche)
         for joueur in self.joueurs:
             joueur.main = [CARTES[cartes_absolues[joueur.nom]]]

@@ -95,8 +95,8 @@ body.in-game #content { width: 100%; height: 100%; }
 .private-reveal img { width: 35px; height: 50px; object-fit: contain; }
 .round-result { margin: 0; text-align: center; }
 .game-table { position: relative; min-height: 0; overflow: hidden; border: 1px solid #dce2d8; border-radius: 24px; background: radial-gradient(ellipse, #edf4ec 0, #f8faf5 65%); }
-.table-ring { position: absolute; top: 50%; left: 50%; width: min(42vw, 66vh); aspect-ratio: 1; border: 1px solid #d4dfd4; border-radius: 50%; background: rgba(235, 243, 234, .5); transform: translate(-50%, -50%); }
-.player-seat { position: absolute; z-index: 1; display: flex; width: clamp(88px, 12vw, 145px); min-height: 120px; align-items: center; flex-direction: column; gap: 3px; padding: 5px 7px; border: 2px solid transparent; border-radius: 12px; background: rgba(255, 254, 250, .94); text-align: center; transform: translate(-50%, -50%); }
+.table-ring { position: absolute; top: 50%; left: 50%; width: 82%; height: 56%; border: 1px solid #d4dfd4; border-radius: 50%; background: rgba(235, 243, 234, .5); transform: translate(-50%, -50%); }
+.player-seat { position: absolute; z-index: 1; display: flex; width: clamp(130px, 15vw, 190px); min-height: 200px; align-items: center; flex-direction: column; gap: 3px; padding: 5px 7px; border: 2px solid transparent; border-radius: 12px; background: rgba(255, 254, 250, .94); text-align: center; transform: translate(-50%, -50%); }
 .player-seat.current-turn { border-color: #c29a48; box-shadow: 0 0 0 3px rgba(194, 154, 72, .18); }
 .seat-name { max-width: 100%; overflow: hidden; font-size: clamp(.8rem, 1.15vw, 1rem); text-overflow: ellipsis; white-space: nowrap; }
 .team-a .seat-name { color: var(--team-a); }
@@ -105,7 +105,7 @@ body.in-game #content { width: 100%; height: 100%; }
 .individual .seat-name { color: #111; }
 .seat-count { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: var(--ink); background: #e9ede7; font-size: .78rem; font-weight: 700; }
 .played-card,
-.empty-card { display: block; width: 62px; height: 88px; object-fit: contain; }
+.empty-card { display: block; width: 124px; height: 176px; object-fit: contain; }
 .discard-tray { position: absolute; z-index: 2; top: 10px; right: 12px; display: flex; max-width: 45%; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .discard-chip { display: grid; min-width: 27px; height: 27px; place-items: center; border-radius: 7px; color: white; font-size: .85rem; font-weight: 700; }
 .color-vert { background: #23804d; }
@@ -113,17 +113,17 @@ body.in-game #content { width: 100%; height: 100%; }
 .color-rouge { background: #bd4035; }
 .color-bleu { background: #2871ad; }
 .color-noir { background: #171717; }
-.game-bottom { display: flex; min-height: 0; max-height: 32vh; align-items: center; justify-content: space-between; gap: 12px; }
-.hand { display: flex; min-width: 0; align-items: center; gap: clamp(4px, .7vw, 10px); }
+.game-bottom { display: flex; min-height: 0; max-height: 45vh; align-items: center; justify-content: space-between; gap: 12px; }
+.hand { display: flex; max-width: 58vw; min-width: 0; align-items: center; gap: clamp(4px, .7vw, 10px); overflow-x: auto; }
 .hand-card,
 .card-choice { padding: 3px; border: 2px solid transparent; border-radius: 8px; background: transparent; line-height: 0; }
-.hand-card { width: clamp(58px, 7.5vw, 88px); }
+.hand-card { width: clamp(116px, 12vw, 176px); flex: 0 0 auto; }
 .hand-card img,
-.card-choice img { display: block; width: 100%; height: clamp(78px, 15vh, 118px); object-fit: contain; }
+.card-choice img { display: block; width: 100%; height: clamp(236px, 30vh, 300px); object-fit: contain; }
 .hand-card.selected,
 .card-choice.selected { border-color: #c29a48; background: #fff7df; }
 .controls,
-.action-panel { display: flex; max-width: 52vw; max-height: 30vh; align-items: center; flex-wrap: wrap; gap: 8px; overflow: auto; padding: 8px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.action-panel { display: flex; max-width: 42vw; max-height: 38vh; align-items: center; flex-wrap: wrap; gap: 8px; overflow: auto; padding: 8px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .controls h3 { margin: 0; font-size: .95rem; }
 .controls form,
 .action-panel form { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
@@ -132,8 +132,8 @@ body.in-game #content { width: 100%; height: 100%; }
 .card-picker { min-width: 0; }
 .picker-label { display: block; margin-bottom: 4px; color: var(--muted); font-size: .75rem; }
 .card-choices { display: flex; max-width: 38vw; gap: 4px; overflow-x: auto; }
-.card-choice { width: clamp(38px, 4.7vw, 56px); flex: 0 0 auto; }
-.card-choice img { height: clamp(55px, 10vh, 76px); }
+.card-choice { width: clamp(76px, 9.4vw, 112px); flex: 0 0 auto; }
+.card-choice img { height: clamp(110px, 14vh, 152px); }
 .action-panel p { margin: 0; font-size: .85rem; }
 .action-panel > button { flex: 0 0 auto; }
 .draw-panel { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
@@ -148,14 +148,21 @@ body.in-game #content { width: 100%; height: 100%; }
   footer { align-items: center; flex-direction: column; gap: 4px; }
   body.in-game main { padding: 4px; }
   .game-table { border-radius: 12px; }
-  .table-ring { width: 58vw; }
-  .player-seat { width: 78px; min-height: 96px; padding: 3px; }
-  .played-card, .empty-card { width: 45px; height: 64px; }
-  .game-bottom { max-height: 36vh; align-items: flex-start; flex-direction: column; gap: 4px; }
-  .hand-card { width: 15vw; max-width: 74px; }
-  .hand-card img { height: 10vh; }
-  .controls, .action-panel { max-width: 100%; max-height: 19vh; }
+  .table-ring { width: 84%; height: 50%; }
+  .player-seat { width: clamp(82px, 20vw, 132px); min-height: 150px; padding: 3px; }
+  .played-card, .empty-card { width: 90px; height: 128px; }
+  .game-bottom { max-height: 42vh; align-items: stretch; flex-direction: column; gap: 4px; }
+  .hand { max-width: 100%; min-height: 0; }
+  .hand-card { width: clamp(116px, 30vw, 148px); }
+  .hand-card img { height: 20vh; }
+  .controls, .action-panel { max-width: 100%; max-height: 18vh; }
   .card-choices { max-width: 75vw; }
-  .card-choice { width: 11vw; max-width: 48px; }
-  .card-choice img { height: 8vh; }
+  .card-choice { width: clamp(76px, 20vw, 96px); }
+  .card-choice img { height: 16vh; }
+}
+
+@media (max-width: 760px) and (orientation: landscape) {
+  .game-bottom { align-items: center; flex-direction: row; }
+  .hand { max-width: 58vw; }
+  .controls, .action-panel { max-width: 40vw; max-height: 30vh; }
 }
