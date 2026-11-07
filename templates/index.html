@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>Jeu des pouvoirs</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand-mark" aria-hidden="true">✦</div>
+    <div>
+      <p class="eyebrow">LE JEU DE CARTES</p>
+      <h1>Jeu des pouvoirs</h1>
+    </div>
+  </header>
+  <main>
+    <section id="lobby" class="panel lobby-panel">
+      <p class="eyebrow">JOUER À DISTANCE</p>
+      <h2>Rejoins tes joueurs</h2>
+      <p class="intro">Crée un salon et partage son code avec les autres joueurs.</p>
+      <div class="lobby-grid">
+        <form id="create-form" class="form-card">
+          <h3>Créer un salon</h3>
+          <label>Ton nom
+            <input name="nom" maxlength="24" autocomplete="nickname" required>
+          </label>
+          <label>Nombre de joueurs
+            <select name="nombre_joueurs">
+              <option value="4">4 joueurs — 2 équipes de 2</option>
+              <option value="5">5 joueurs — équipes de 2 et 3</option>
+              <option value="6">6 joueurs — chacun pour soi</option>
+            </select>
+          </label>
+          <button type="submit">Créer le salon</button>
+        </form>
+        <form id="join-form" class="form-card">
+          <h3>Rejoindre un salon</h3>
+          <label>Ton nom
+            <input name="nom" maxlength="24" autocomplete="nickname" required>
+          </label>
+          <label>Code du salon
+            <input name="code" maxlength="6" autocapitalize="characters" required>
+          </label>
+          <button type="submit" class="secondary">Rejoindre</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="game" class="hidden">
+      <div id="room-header" class="panel room-header"></div>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <div id="content"></div>
+    </section>
+  </main>
+  <footer>
+    <span>Chaque joueur ne voit que sa propre main.</span>
+    <span>Garde le code du salon privé.</span>
+  </footer>
+  <script src="/static/game.js" defer></script>
+</body>
+</html>
