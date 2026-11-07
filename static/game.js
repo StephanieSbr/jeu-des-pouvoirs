@@ -198,7 +198,7 @@ function renderTable(state) {
   }
   table.append(discards);
 
-  // Ancre la table sur soi, puis place les autres selon l'ordre horaire du jeu.
+  // Ancre la table sur soi ; l'ordre de jeu progresse dans le sens horaire.
   const players = [...state.joueurs];
   const selfIndex = players.findIndex((player) => player.nom === state.vous);
   const clockwise = [
@@ -214,7 +214,7 @@ function renderTable(state) {
     50 - ((seatWidth / 2 + 8) / layoutWidth) * 100,
   );
   clockwise.forEach((player, index) => {
-    const angle = Math.PI / 2 - (2 * Math.PI * index) / clockwise.length;
+    const angle = Math.PI / 2 + (2 * Math.PI * index) / clockwise.length;
     const seat = node("article", "player-seat");
     seat.style.left = `${50 + horizontalRadius * Math.cos(angle)}%`;
     seat.style.top = `${50 + 20 * Math.sin(angle)}%`;

@@ -112,6 +112,64 @@ class WebSalonTests(unittest.TestCase):
         with self.rooms_lock:
             self.rooms.clear()
 
+    def test_turn_resolution_keeps_the_current_game_active_when_hands_remain(self):
+        from app import JoueurSalon, Salon, _resoudre_tour
+
+        jeu = main.Jeu(["A", "B", "C", "D"])
+        jeu.demarrer_match({"A": 30, "B": 31, "C": 34, "D": 35})
+        partie = jeu.partie
+        partie.en_jeu = {
+            nom: main.CartePosee(main.CARTES[score], nom, nom)
+            for nom, score in zip(("A", "B", "C", "D"), (17, 18, 19, 20))
+        }
+        partie.joueurs_ayant_joue = {"A", "B", "C", "D"}
+        salon = Salon(
+            "ABC123",
+            4,
+            [JoueurSalon(nom, nom) for nom in ("A", "B", "C", "D")],
+            "A",
+            phase="active",
+            jeu=jeu,
+        )
+
+        _resoudre_tour(salon)
+
+        self.assertEqual(salon.phase, "active")
+        self.assertFalse(partie.terminee)
+        self.assertEqual(partie.nombre_tours, 1)
+        self.assertTrue(all(joueur.main for joueur in jeu.joueurs))
+        self.assertEqual(jeu.joueur_courant.nom, "D")
+
+    def test_turn_resolution_offers_the_next_deal_when_a_player_runs_out(self):
+        from app import JoueurSalon, Salon, _resoudre_tour
+
+        jeu = main.Jeu(["A", "B", "C", "D"])
+        jeu.demarrer_match({"A": 30, "B": 31, "C": 34, "D": 35})
+        partie = jeu.partie
+        partie.en_jeu = {}
+        for joueur in jeu.joueurs:
+            carte = joueur.main.pop()
+            joueur.main.clear()
+            partie.en_jeu[joueur.nom] = main.CartePosee(
+                carte,
+                joueur.nom,
+                joueur.nom,
+            )
+        partie.joueurs_ayant_joue = {"A", "B", "C", "D"}
+        salon = Salon(
+            "ABC123",
+            4,
+            [JoueurSalon(nom, nom) for nom in ("A", "B", "C", "D")],
+            "A",
+            phase="active",
+            jeu=jeu,
+        )
+
+        _resoudre_tour(salon)
+
+        self.assertEqual(salon.phase, "entre_parties")
+        self.assertTrue(partie.terminee)
+
     def _client(self):
         client = self.app.test_client()
         client.get("/")
@@ -178,7 +236,7 @@ class WebSalonTests(unittest.TestCase):
 
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-5", response.data)
+        self.assertIn(b"game.js?v=20261107-6", response.data)
         self.assertIn(b"style.css?v=20261107-5", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):

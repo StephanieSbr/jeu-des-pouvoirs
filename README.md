@@ -79,9 +79,10 @@ dans GitHub. Si le navigateur est servi en HTTPS, active aussi
 6. Une fois que chaque joueur a posé une carte, les défausses sont résolues.
    Si une 13 demande une défausse supplémentaire, son propriétaire choisit sa
    carte lui-même.
-7. Après une partie, n'importe quel joueur peut lancer la distribution suivante.
-   Après le match, n'importe quel joueur peut créer un nouveau match dans le
-   même salon.
+7. Si personne n'a épuisé sa main, le tour suivant commence automatiquement
+   avec les cartes restantes. Quand une partie est gagnée, n'importe quel joueur
+   peut lancer la distribution suivante. Après le match, n'importe quel joueur
+   peut créer un nouveau match dans le même salon.
 
 Chaque joueur peut quitter avec le bouton **Quitter le jeu**. Fermer l'onglet
 signale aussi son départ ; si le navigateur n'envoie pas ce signal, le serveur

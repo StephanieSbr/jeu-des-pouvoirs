@@ -238,7 +238,15 @@ def _resoudre_tour(salon: Salon) -> None:
     salon.jeu.terminer_tour(salon.choix_13)
     salon.choix_13.clear()
     salon.joueurs_qui_doivent_choisir_13.clear()
-    if salon.jeu.match_termine or salon.jeu.parties_jouees >= salon.jeu.NOMBRE_MAX_PARTIES:
+    partie = salon.jeu.partie
+    if partie is None:
+        raise RuntimeError("La partie courante est introuvable.")
+    if not partie.terminee:
+        salon.phase = "active"
+    elif (
+        salon.jeu.match_termine
+        or salon.jeu.parties_jouees >= salon.jeu.NOMBRE_MAX_PARTIES
+    ):
         salon.phase = "match_termine"
     else:
         salon.phase = "entre_parties"
