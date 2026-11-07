@@ -8,6 +8,7 @@ let lastState = "";
 let selectedCard = null;
 let privateNotice = "";
 let polling = null;
+let inRoom = false;
 
 function showNotice(message, error = false) {
   notice.replaceChildren();
@@ -105,6 +106,10 @@ function renderRoomHeader(state) {
   left.append(codeLine, node("p", "room-caption", `Tu joues sous le nom de ${state.vous}`));
   roomHeader.append(left);
   roomHeader.append(node("span", "phase-label", phaseTitle(state.phase)));
+  const leave = node("button", "secondary", "Quitter le jeu");
+  leave.type = "button";
+  leave.addEventListener("click", leaveRoom);
+  roomHeader.append(leave);
 }
 
 function phaseTitle(phase) {
@@ -127,6 +132,7 @@ function renderPlayers(state, showTeams = true) {
     if (showTeams && player.equipe) detail = player.equipe;
     else if (player.a_tire) detail = "Carte tirée";
     else if (state.phase === "attente") detail = "Dans le salon";
+    if (!player.connecte) detail = "Déconnecté — en attente de son retour";
     if (player.cartes_en_main !== undefined) {
       detail = `${player.cartes_en_main} carte${player.cartes_en_main === 1 ? "" : "s"} en main`;
       if (showTeams && player.equipe) detail += ` · ${player.equipe}`;
@@ -141,7 +147,10 @@ function renderPlayers(state, showTeams = true) {
 
 function renderWaiting(state) {
   const panel = section("Les joueurs", `${state.joueurs.length}/${state.nombre_joueurs}`);
-  panel.append(node("p", "muted", "Partage le code du salon. Le créateur pourra démarrer quand tout le monde aura rejoint."));
+  panel.append(node("p", "muted", "Partage le code du salon. N'importe quel joueur peut démarrer lorsque le groupe est complet et connecté."));
+  if (state.joueurs_deconnectes.length) {
+    panel.append(node("p", "notice", `En attente du retour de : ${state.joueurs_deconnectes.join(", ")}.`));
+  }
   panel.append(renderPlayers(state, false));
   if (state.peut_commencer) {
     const button = node("button", "", "Démarrer le match");
@@ -365,11 +374,23 @@ function render(state, force = false) {
   if (state.messages_prives) privateNotice = state.messages_prives;
   lobby.classList.add("hidden");
   gameRoot.classList.remove("hidden");
+  inRoom = true;
+  if (polling === null) polling = window.setInterval(refresh, 2000);
   renderRoomHeader(state);
   content.replaceChildren();
   if (privateNotice) {
     const message = node("div", "private-message", privateNotice);
     content.append(message);
+  }
+  if (state.joueurs_deconnectes.length && state.phase !== "attente") {
+    const paused = section("Partie en pause");
+    paused.append(node(
+      "p",
+      "muted",
+      `En attente du retour de ${state.joueurs_deconnectes.join(", ")}. La partie reprendra lorsqu'il ou elle aura rejoint le salon avec le même nom et le même code.`,
+    ));
+    content.append(paused);
+    return;
   }
   if (state.phase === "attente") renderWaiting(state);
   else if (state.phase === "tirage") renderDraft(state);
@@ -380,7 +401,7 @@ function render(state, force = false) {
       const button = node("button", "", "Distribuer la partie suivante");
       button.addEventListener("click", () => runAction(() => post("/api/prochaine-partie")));
       panel.append(button);
-    } else panel.append(node("p", "muted", "L'hôte va démarrer la prochaine partie."));
+    } else panel.append(node("p", "muted", "Un joueur peut démarrer la prochaine partie."));
     content.append(panel);
   } else if (state.phase === "match_termine") {
     const panel = section("Fin du match");
@@ -412,13 +433,32 @@ async function refresh() {
   try {
     const response = await fetch("/api/etat", { credentials: "same-origin" });
     if (response.status === 401) {
-      clearInterval(polling);
+      inRoom = false;
+      if (polling !== null) {
+        window.clearInterval(polling);
+        polling = null;
+      }
       renderLobby();
       return;
     }
     const state = await response.json();
     if (!response.ok) throw new Error(state.error || "Impossible de charger le salon.");
     render(state);
+  } catch (error) {
+    showNotice(error.message, true);
+  }
+}
+
+async function leaveRoom() {
+  try {
+    await post("/api/quitter");
+    inRoom = false;
+    if (polling !== null) {
+      window.clearInterval(polling);
+      polling = null;
+    }
+    lastState = "";
+    renderLobby();
   } catch (error) {
     showNotice(error.message, true);
   }
@@ -454,5 +494,17 @@ document.getElementById("join-form").addEventListener("submit", (event) => {
   }));
 });
 
-refresh();
-polling = window.setInterval(refresh, 2000);
+if (document.querySelector('meta[name="has-room"]').content === "true") refresh();
+
+window.addEventListener("pagehide", () => {
+  if (!inRoom) return;
+  const payload = new Blob([JSON.stringify({ csrf })], {
+    type: "application/json",
+  });
+  navigator.sendBeacon("/api/quitter", payload);
+  inRoom = false;
+});
+
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) refresh();
+});

@@ -33,12 +33,15 @@ _ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _ROOMS: Dict[str, "Salon"] = {}
 _ROOMS_LOCK = threading.RLock()
 _ROOM_EXPIRATION_SECONDS = 12 * 60 * 60
+_PLAYER_TIMEOUT_SECONDS = 12
 
 
 @dataclass
 class JoueurSalon:
     nom: str
     jeton: str
+    derniere_activite: float = field(default_factory=time.time)
+    connecte: bool = True
 
 
 @dataclass
@@ -76,6 +79,12 @@ def _generer_code_salon() -> str:
             return code
 
 
+def _marquer_joueurs_inactifs(salon: Salon, maintenant: float) -> None:
+    for joueur in salon.joueurs:
+        if maintenant - joueur.derniere_activite > _PLAYER_TIMEOUT_SECONDS:
+            joueur.connecte = False
+
+
 def _jeton_csrf() -> str:
     if "csrf" not in session:
         session["csrf"] = secrets.token_urlsafe(24)
@@ -85,7 +94,15 @@ def _jeton_csrf() -> str:
 def _verifier_csrf() -> None:
     attendu = session.get("csrf")
     fourni = request.headers.get("X-CSRF-Token")
-    if not attendu or not fourni or not secrets.compare_digest(attendu, fourni):
+    if not fourni and request.is_json:
+        contenu = request.get_json(silent=True)
+        if isinstance(contenu, dict):
+            fourni = contenu.get("csrf")
+    if (
+        not isinstance(attendu, str)
+        or not isinstance(fourni, str)
+        or not secrets.compare_digest(attendu, fourni)
+    ):
         raise ValueError("La session du navigateur a expiré. Recharge la page et réessaie.")
 
 
@@ -96,11 +113,21 @@ def _salon_courant() -> Salon:
         raise PermissionError("Rejoins un salon avant de jouer.")
     salon = _ROOMS.get(code)
     if salon is None:
-        session.clear()
+        session.pop("room_code", None)
+        session.pop("player_token", None)
         raise PermissionError("Ce salon n'existe plus ou a expiré.")
-    if not any(joueur.jeton == jeton for joueur in salon.joueurs):
-        session.clear()
+    maintenant = time.time()
+    _marquer_joueurs_inactifs(salon, maintenant)
+    joueur_courant = next(
+        (joueur for joueur in salon.joueurs if joueur.jeton == jeton),
+        None,
+    )
+    if joueur_courant is None:
+        session.pop("room_code", None)
+        session.pop("player_token", None)
         raise PermissionError("Cette session n'est plus membre du salon.")
+    joueur_courant.connecte = True
+    joueur_courant.derniere_activite = maintenant
     salon.modifie_a = time.time()
     return salon
 
@@ -113,8 +140,18 @@ def _joueur_courant_salon(salon: Salon) -> JoueurSalon:
     raise PermissionError("Joueur inconnu dans ce salon.")
 
 
-def _est_hote(salon: Salon) -> bool:
-    return session.get("player_token") == salon.jeton_hote
+def _joueurs_deconnectes(salon: Salon) -> List[str]:
+    return [joueur.nom for joueur in salon.joueurs if not joueur.connecte]
+
+
+def _exiger_joueurs_connectes(salon: Salon) -> None:
+    absents = _joueurs_deconnectes(salon)
+    if absents:
+        raise ValueError(
+            "La partie est en pause. En attente du retour de : {}.".format(
+                ", ".join(absents)
+            )
+        )
 
 
 def _api_erreur(message: str, statut: int):
@@ -214,9 +251,11 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
             {
                 "nom": joueur.nom,
                 "a_tire": joueur.nom in salon.tirages,
+                "connecte": joueur.connecte,
             }
             for joueur in salon.joueurs
         ],
+        "joueurs_deconnectes": _joueurs_deconnectes(salon),
         "messages_prives": salon.messages_prives.pop(moi.nom, None),
         "tirage_personnel": salon.tirages.get(moi.nom),
         "equipes_revelees": salon.phase != "tirage",
@@ -224,8 +263,8 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
     }
     if salon.phase == "attente":
         etat["peut_commencer"] = (
-            jeton == salon.jeton_hote
-            and len(salon.joueurs) == salon.nombre_joueurs
+            len(salon.joueurs) == salon.nombre_joueurs
+            and not _joueurs_deconnectes(salon)
         )
         return etat
     if salon.jeu is None:
@@ -325,9 +364,9 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
     if salon.phase == "tirage":
         etat["tirages_valides"] = len(salon.tirages)
     if salon.phase == "entre_parties":
-        etat["peut_commencer"] = jeton == salon.jeton_hote
+        etat["peut_commencer"] = not _joueurs_deconnectes(salon)
     if salon.phase == "match_termine":
-        etat["peut_nouveau_match"] = jeton == salon.jeton_hote
+        etat["peut_nouveau_match"] = not _joueurs_deconnectes(salon)
         partie = jeu.partie
         etat["vainqueur_partie"] = (
             partie.equipe_gagnante.value
@@ -341,7 +380,11 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
 
 @app.get("/")
 def accueil():
-    return render_template("index.html", csrf=_jeton_csrf())
+    return render_template(
+        "index.html",
+        csrf=_jeton_csrf(),
+        has_room=bool(session.get("room_code") and session.get("player_token")),
+    )
 
 
 @app.get("/cartes/<int:score>.png")
@@ -395,14 +438,29 @@ def rejoindre_salon():
             salon = _ROOMS.get(code)
             if salon is None:
                 raise ValueError("Code de salon invalide ou expiré.")
-            if salon.phase != "attente":
-                raise ValueError("La partie a déjà commencé.")
-            if len(salon.joueurs) >= salon.nombre_joueurs:
-                raise ValueError("Ce salon est complet.")
-            if any(j.nom.casefold() == nom.casefold() for j in salon.joueurs):
-                raise ValueError("Ce nom est déjà utilisé dans le salon.")
-            jeton = secrets.token_urlsafe(32)
-            salon.joueurs.append(JoueurSalon(nom=nom, jeton=jeton))
+            _marquer_joueurs_inactifs(salon, time.time())
+            joueur_existant = next(
+                (
+                    joueur
+                    for joueur in salon.joueurs
+                    if joueur.nom.casefold() == nom.casefold()
+                ),
+                None,
+            )
+            if joueur_existant is not None:
+                if joueur_existant.connecte:
+                    raise ValueError("Ce nom est déjà utilisé dans le salon.")
+                joueur_existant.jeton = secrets.token_urlsafe(32)
+                joueur_existant.connecte = True
+                joueur_existant.derniere_activite = time.time()
+                jeton = joueur_existant.jeton
+            else:
+                if salon.phase != "attente":
+                    raise ValueError("La partie a déjà commencé.")
+                if len(salon.joueurs) >= salon.nombre_joueurs:
+                    raise ValueError("Ce salon est complet.")
+                jeton = secrets.token_urlsafe(32)
+                salon.joueurs.append(JoueurSalon(nom=nom, jeton=jeton))
             salon.modifie_a = time.time()
             session["room_code"] = code
             session["player_token"] = jeton
@@ -422,16 +480,45 @@ def obtenir_etat():
         return _api_erreur(str(erreur), 401)
 
 
+@app.post("/api/quitter")
+def quitter_salon():
+    try:
+        _verifier_csrf()
+        with _ROOMS_LOCK:
+            salon = _salon_courant()
+            joueur = _joueur_courant_salon(salon)
+            if salon.phase == "attente":
+                salon.joueurs.remove(joueur)
+                if salon.jeton_hote == joueur.jeton:
+                    salon.jeton_hote = (
+                        salon.joueurs[0].jeton if salon.joueurs else ""
+                    )
+                if not salon.joueurs:
+                    del _ROOMS[salon.code]
+                else:
+                    salon.modifie_a = time.time()
+            else:
+                joueur.connecte = False
+                joueur.derniere_activite = time.time()
+                salon.modifie_a = time.time()
+            session.pop("room_code", None)
+            session.pop("player_token", None)
+        return jsonify({"ok": True})
+    except PermissionError as erreur:
+        return _api_erreur(str(erreur), 403)
+    except ValueError as erreur:
+        return _api_erreur(str(erreur), 400)
+
+
 @app.post("/api/demarrer")
 def demarrer_match():
     try:
         _verifier_csrf()
         with _ROOMS_LOCK:
             salon = _salon_courant()
-            if not _est_hote(salon):
-                raise PermissionError("Seul l'hôte peut démarrer le match.")
             if salon.phase != "attente" or len(salon.joueurs) != salon.nombre_joueurs:
                 raise ValueError("Le salon doit être complet avant de démarrer.")
+            _exiger_joueurs_connectes(salon)
             noms = [joueur.nom for joueur in salon.joueurs]
             salon.jeu = Jeu(noms)
             if len(noms) == 6:
@@ -456,6 +543,7 @@ def tirer_absolue():
         _verifier_csrf()
         with _ROOMS_LOCK:
             salon = _salon_courant()
+            _exiger_joueurs_connectes(salon)
             joueur = _joueur_courant_salon(salon)
             if salon.phase != "tirage":
                 raise ValueError("Le tirage des équipes n'est pas en cours.")
@@ -662,6 +750,7 @@ def jouer_carte():
         donnees = _lire_json()
         with _ROOMS_LOCK:
             salon = _salon_courant()
+            _exiger_joueurs_connectes(salon)
             if salon.phase != "active":
                 raise ValueError("Aucune partie n'est en cours.")
             _commencer_pose(salon, donnees)
@@ -683,6 +772,7 @@ def repondre_pouvoir():
             raise ValueError("Choisis une carte valide.")
         with _ROOMS_LOCK:
             salon = _salon_courant()
+            _exiger_joueurs_connectes(salon)
             _repondre_action(salon, score)
             salon.modifie_a = time.time()
             return jsonify({"ok": True})
@@ -702,6 +792,7 @@ def choisir_carte_supplementaire():
             raise ValueError("Choisis une carte valide.")
         with _ROOMS_LOCK:
             salon = _salon_courant()
+            _exiger_joueurs_connectes(salon)
             if salon.phase != "choix_13" or salon.jeu is None:
                 raise ValueError("Aucun choix lié à la carte 13 n'est attendu.")
             joueur = _joueur_courant_salon(salon)
@@ -730,8 +821,7 @@ def prochaine_partie():
         _verifier_csrf()
         with _ROOMS_LOCK:
             salon = _salon_courant()
-            if not _est_hote(salon):
-                raise PermissionError("Seul l'hôte peut démarrer la partie suivante.")
+            _exiger_joueurs_connectes(salon)
             if salon.phase != "entre_parties":
                 raise ValueError("Le match n'attend pas une nouvelle partie.")
             _lancer_partie_suivante(salon)
@@ -749,8 +839,7 @@ def nouveau_match():
         _verifier_csrf()
         with _ROOMS_LOCK:
             salon = _salon_courant()
-            if not _est_hote(salon):
-                raise PermissionError("Seul l'hôte peut démarrer un nouveau match.")
+            _exiger_joueurs_connectes(salon)
             if salon.phase != "match_termine":
                 raise ValueError("Le match en cours n'est pas terminé.")
             salon.jeu = Jeu([joueur.nom for joueur in salon.joueurs])

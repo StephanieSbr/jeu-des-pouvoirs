@@ -46,7 +46,8 @@ GitHub stocke le code ; le serveur Render exécute le jeu et sert le site.
 1. Enregistre ces fichiers dans ton dépôt GitHub.
 2. Crée un compte Render et autorise Render à accéder au dépôt GitHub.
 3. Dans Render, choisis **New → Blueprint**, sélectionne le dépôt et confirme
-   la configuration lue dans `render.yaml`.
+   la configuration lue dans `render.yaml`. Le service est configuré sur
+   l'offre gratuite (`plan: free`).
 4. Attends la fin du déploiement, puis ouvre l'adresse HTTPS fournie par Render.
 5. Crée un salon, choisis 4, 5 ou 6 joueurs et partage le code aux autres.
    Chacun ouvre la même adresse, saisit son nom et rejoint le salon.
@@ -56,6 +57,8 @@ pour ce prototype car les salons actifs sont conservés en mémoire. Un
 redémarrage ou une mise en veille qui relance le processus efface les salons et
 les parties en cours. Les scores ne sont pas sauvegardés durablement ; ajoute
 une base de données avant de considérer le site comme un service permanent.
+L'offre gratuite peut mettre le service en veille après 15 minutes sans visite ;
+le premier chargement suivant peut prendre environ une minute.
 
 Pour héberger ailleurs, installe `requirements.txt` et démarre le serveur avec
 `gunicorn --workers 1 --threads 8 --bind 0.0.0.0:$PORT app:app`. Configure une
@@ -65,17 +68,27 @@ dans GitHub. Si le navigateur est servi en HTTPS, active aussi
 
 ## Parcours d'une partie
 
-1. L'hôte crée un salon et attend que tous les joueurs le rejoignent.
-2. À 4 ou 5 joueurs, chacun tire une carte absolue dans le salon. Une fois le
+1. Un joueur crée un salon et attend que tous les joueurs le rejoignent.
+2. Dès que le groupe est complet et connecté, le bouton de démarrage est
+   disponible pour tous les joueurs.
+3. À 4 ou 5 joueurs, chacun tire une carte absolue dans le salon. Une fois le
    tirage complet, les équipes sont révélées et la première distribution commence.
-3. À 6 joueurs, le match individuel commence immédiatement.
-4. Le joueur dont c'est le tour choisit une carte. Quand un pouvoir demande la
+4. À 6 joueurs, le match individuel commence immédiatement.
+5. Le joueur dont c'est le tour choisit une carte. Quand un pouvoir demande la
    décision d'un autre joueur, celui-ci reçoit son propre choix à l'écran.
-5. Une fois que chaque joueur a posé une carte, les défausses sont résolues.
+6. Une fois que chaque joueur a posé une carte, les défausses sont résolues.
    Si une 13 demande une défausse supplémentaire, son propriétaire choisit sa
    carte lui-même.
-6. Après une partie, l'hôte lance la distribution suivante. Après le match, il
-   peut créer un nouveau match dans le même salon.
+7. Après une partie, n'importe quel joueur peut lancer la distribution suivante.
+   Après le match, n'importe quel joueur peut créer un nouveau match dans le
+   même salon.
+
+Chaque joueur peut quitter avec le bouton **Quitter le jeu**. Fermer l'onglet
+signale aussi son départ ; si le navigateur n'envoie pas ce signal, le serveur
+le détecte après environ 12 secondes sans activité. Dans le salon d'attente, le
+joueur est retiré. En cours de match, la partie est mise en pause et ce joueur
+peut revenir avec le même nom et le code du salon ; les actions reprennent après
+son retour.
 
 Les pouvoirs de révélation restent privés dans l'interface : les mains des
 adversaires ne sont jamais renvoyées au navigateur d'un autre joueur.

@@ -146,6 +146,94 @@ class WebSalonTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("session", response.get_json()["error"].lower())
 
+    def test_any_connected_player_can_start_a_full_room(self):
+        clients = []
+        code = None
+        for index, name in enumerate(("Alice", "Benoit", "Camille", "David")):
+            client, csrf = self._client()
+            if index == 0:
+                response = self._post(
+                    client,
+                    csrf,
+                    "/api/salons",
+                    {"nom": name, "nombre_joueurs": 4},
+                )
+                code = response.get_json()["code"]
+            else:
+                self._post(
+                    client,
+                    csrf,
+                    "/api/rejoindre",
+                    {"nom": name, "code": code},
+                )
+            clients.append((client, csrf))
+
+        states = [client.get("/api/etat").get_json() for client, _ in clients]
+        self.assertTrue(all(state["peut_commencer"] for state in states))
+        self.assertEqual(self._post(clients[-1][0], clients[-1][1], "/api/demarrer").status_code, 200)
+
+    def test_leaving_waiting_room_frees_the_seat(self):
+        host, host_csrf = self._client()
+        created = self._post(
+            host,
+            host_csrf,
+            "/api/salons",
+            {"nom": "Alice", "nombre_joueurs": 4},
+        )
+        code = created.get_json()["code"]
+        guest, guest_csrf = self._client()
+        self._post(guest, guest_csrf, "/api/rejoindre", {"nom": "Benoit", "code": code})
+
+        self.assertEqual(self._post(guest, guest_csrf, "/api/quitter").status_code, 200)
+        newcomer, newcomer_csrf = self._client()
+        joined = self._post(
+            newcomer,
+            newcomer_csrf,
+            "/api/rejoindre",
+            {"nom": "Camille", "code": code},
+        )
+        self.assertEqual(joined.status_code, 200)
+        self.assertEqual(len(host.get("/api/etat").get_json()["joueurs"]), 2)
+
+    def test_depart_during_match_pauses_until_same_player_rejoins(self):
+        host, host_csrf = self._client()
+        code = self._post(
+            host,
+            host_csrf,
+            "/api/salons",
+            {"nom": "Alice", "nombre_joueurs": 4},
+        ).get_json()["code"]
+        clients = [(host, host_csrf, "Alice")]
+        for name in ("Benoit", "Camille", "David"):
+            client, csrf = self._client()
+            self._post(client, csrf, "/api/rejoindre", {"nom": name, "code": code})
+            clients.append((client, csrf, name))
+        self._post(host, host_csrf, "/api/demarrer")
+
+        leaver, leaver_csrf, name = clients[-1]
+        departure = leaver.post(
+            "/api/quitter",
+            json={"csrf": leaver_csrf},
+        )
+        self.assertEqual(departure.status_code, 200)
+        paused_state = host.get("/api/etat").get_json()
+        self.assertEqual(paused_state["joueurs_deconnectes"], [name])
+        blocked_action = self._post(clients[0][0], clients[0][1], "/api/tirer")
+        self.assertEqual(blocked_action.status_code, 400)
+        self.assertIn("pause", blocked_action.get_json()["error"].lower())
+
+        returned, returned_csrf = self._client()
+        joined = self._post(
+            returned,
+            returned_csrf,
+            "/api/rejoindre",
+            {"nom": name, "code": code},
+        )
+        self.assertEqual(joined.status_code, 200)
+        resumed_state = host.get("/api/etat").get_json()
+        self.assertEqual(resumed_state["joueurs_deconnectes"], [])
+        self.assertEqual(resumed_state["phase"], "tirage")
+
 
 if __name__ == "__main__":
     unittest.main()
