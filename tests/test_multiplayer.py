@@ -165,6 +165,11 @@ class WebSalonTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.mimetype, "image/png")
 
+    def test_homepage_uses_versioned_frontend_assets(self):
+        response = self.app.test_client().get("/")
+        self.assertIn(b"game.js?v=20261107-1", response.data)
+        self.assertIn(b"style.css?v=20261107-1", response.data)
+
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage
 
