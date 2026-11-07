@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="has-room" content="{{ 'true' if has_room else 'false' }}">
   <title>Jeu des pouvoirs</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261107-13') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261107-14') }}">
 </head>
 <body>
   <header class="site-header">
@@ -70,6 +70,6 @@
     <span>Chaque joueur ne voit que sa propre main.</span>
     <span>Partage le nom de ton salon avec les autres joueurs.</span>
   </footer>
-  <script src="{{ url_for('static', filename='game.js', v='20261107-13') }}" defer></script>
+  <script src="{{ url_for('static', filename='game.js', v='20261107-14') }}" defer></script>
 </body>
 </html>

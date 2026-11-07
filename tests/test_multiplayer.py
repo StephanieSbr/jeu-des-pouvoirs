@@ -407,8 +407,8 @@ class WebSalonTests(unittest.TestCase):
 
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-13", response.data)
-        self.assertIn(b"style.css?v=20261107-13", response.data)
+        self.assertIn(b"game.js?v=20261107-14", response.data)
+        self.assertIn(b"style.css?v=20261107-14", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage

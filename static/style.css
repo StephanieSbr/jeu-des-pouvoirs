@@ -119,9 +119,8 @@ body.in-game #content { width: 100%; min-height: 0; }
 .empty-card { display: block; width: min(24dvh, 220px); max-width: 100%; height: min(32dvh, 300px); aspect-ratio: 186 / 264; object-fit: contain; transition: width .25s ease, height .25s ease; }
 .player-seat:hover,
 .player-seat:focus-within { z-index: 5; }
-.played-card { position: relative; z-index: 1; cursor: zoom-in; transition: transform .18s ease; transform-origin: center; }
-.played-card:hover,
-.played-card:focus-visible { z-index: 6; cursor: zoom-out; transform: scale(1.35); }
+.played-card { position: relative; z-index: 1; }
+.zoomable-card { cursor: zoom-in; }
 .discard-tray { position: absolute; z-index: 2; top: 10px; right: 12px; display: flex; max-width: 45%; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .turn-summary { position: absolute; z-index: 3; top: 50%; left: 50%; width: min(440px, 72%); padding: 14px 18px; border: 1px solid #d4dfd4; border-radius: 16px; background: rgba(255, 254, 250, .96); box-shadow: 0 12px 32px rgba(38, 57, 45, .16); text-align: center; transform: translate(-50%, -50%); }
 .turn-summary h2 { margin: 0 0 8px; font-size: clamp(1.05rem, 2.2vw, 1.6rem); }
@@ -139,7 +138,6 @@ body.in-game #content { width: 100%; min-height: 0; }
 .hand-card { width: clamp(170px, 22vw, 260px); max-width: none; min-width: 0; flex: 0 0 auto; scroll-snap-align: start; }
 .hand-card img { display: block; width: 100%; height: clamp(150px, 24dvh, 270px); object-fit: contain; }
 .card-choice img { display: block; width: 100%; height: clamp(150px, 42dvh, 430px); object-fit: contain; }
-.game-bottom.controls-open .hand-card img { height: clamp(150px, 24dvh, 270px); }
 .hand-card.selected,
 .card-choice.selected { border-color: #c29a48; background: #fff7df; }
 .controls,
@@ -163,11 +161,8 @@ body.in-game #content { width: 100%; min-height: 0; }
 .absolute-draw { display: flex; min-width: 0; align-items: center; flex-direction: column; gap: 5px; }
 .absolute-draw strong { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 .absolute-draw img { display: block; width: 100%; height: min(58dvh, 390px); object-fit: contain; }
-
-body.hand-focus .game-table { height: 58dvh; min-height: 400px; }
-body.hand-focus .hand-card { width: clamp(210px, 27vw, 320px); }
-body.hand-focus .hand-card img,
-body.hand-focus .game-bottom.controls-open .hand-card img { height: clamp(220px, 46dvh, 480px); }
+.card-zoom-preview { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(25, 35, 30, .48); pointer-events: none; }
+.card-zoom-preview img { width: min(44vw, 420px); max-height: 86dvh; object-fit: contain; border-radius: 12px; box-shadow: 0 18px 56px rgba(0, 0, 0, .38); }
 
 @media (max-width: 760px) {
   body.in-game { overflow-x: hidden; overflow-y: auto; }
@@ -193,15 +188,11 @@ body.hand-focus .game-bottom.controls-open .hand-card img { height: clamp(220px,
   .played-card, .empty-card { width: min(20dvh, 180px); height: min(27dvh, 240px); }
   .hand-card { width: clamp(180px, 45vw, 240px); }
   .hand-card img { height: min(24dvh, 210px); }
-  .game-bottom.controls-open .hand-card img { height: min(24dvh, 210px); }
-  body.hand-focus .game-table { height: 620px; min-height: 620px; }
-  body.hand-focus .hand-card { width: clamp(220px, 52vw, 280px); }
-  body.hand-focus .hand-card img,
-  body.hand-focus .game-bottom.controls-open .hand-card img { height: min(42dvh, 350px); }
   .controls, .action-panel { max-width: 100%; }
   .card-choices { max-width: 100%; }
   .card-choice { width: clamp(114px, 30vw, 144px); }
   .card-choice img { height: 24vh; }
+  .card-zoom-preview img { width: min(72vw, 420px); }
 }
 
 @media (max-width: 760px) and (orientation: landscape) {
