@@ -332,7 +332,8 @@ function renderTable(state) {
       const card = document.createElement("img");
       card.className = "played-card";
       card.src = `/cartes/${player.carte_devant}.png`;
-      card.alt = "Carte posée";
+      card.alt = `Carte ${player.carte_devant} posée par ${player.nom}`;
+      card.tabIndex = 0;
       seat.append(card);
     } else {
       seat.append(node("div", "empty-card"));

@@ -106,7 +106,7 @@ body.in-game #content { width: 100%; min-height: 0; }
 .private-reveal { display: flex; align-items: center; gap: 8px; padding: 3px 8px; border-radius: 8px; background: white; font-size: .82rem; }
 .private-reveal img { width: 52px; height: 75px; object-fit: contain; }
 .round-result { margin: 0; text-align: center; }
-.game-table { position: relative; height: 82dvh; min-height: 500px; overflow: hidden; border: 1px solid #dce2d8; border-radius: 24px; background: radial-gradient(ellipse, #edf4ec 0, #f8faf5 65%); transition: height .25s ease; }
+.game-table { position: relative; height: 82dvh; min-height: 500px; overflow: visible; border: 1px solid #dce2d8; border-radius: 24px; background: radial-gradient(ellipse, #edf4ec 0, #f8faf5 65%); transition: height .25s ease; }
 .table-ring { position: absolute; top: 50%; left: 50%; width: 92%; height: 82%; border: 1px solid #d4dfd4; border-radius: 18px; background: rgba(235, 243, 234, .5); transform: translate(-50%, -50%); }
 .player-seat { position: absolute; z-index: 1; display: flex; width: clamp(160px, 20vw, 260px); min-height: 0; align-items: center; flex-direction: column; gap: 3px; padding: 4px; border: 2px solid transparent; border-radius: 12px; background: rgba(255, 254, 250, .94); text-align: center; transform: translate(-50%, -50%); }
 .player-seat.current-turn { border-color: #c29a48; box-shadow: 0 0 0 3px rgba(194, 154, 72, .18); }
@@ -117,6 +117,11 @@ body.in-game #content { width: 100%; min-height: 0; }
 .seat-count { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: var(--ink); background: #e9ede7; font-size: .78rem; font-weight: 700; }
 .played-card,
 .empty-card { display: block; width: min(24dvh, 220px); max-width: 100%; height: min(32dvh, 300px); aspect-ratio: 186 / 264; object-fit: contain; transition: width .25s ease, height .25s ease; }
+.player-seat:hover,
+.player-seat:focus-within { z-index: 5; }
+.played-card { position: relative; z-index: 1; cursor: zoom-in; transition: transform .18s ease; transform-origin: center; }
+.played-card:hover,
+.played-card:focus-visible { z-index: 6; cursor: zoom-out; transform: scale(1.35); }
 .discard-tray { position: absolute; z-index: 2; top: 10px; right: 12px; display: flex; max-width: 45%; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .turn-summary { position: absolute; z-index: 3; top: 50%; left: 50%; width: min(440px, 72%); padding: 14px 18px; border: 1px solid #d4dfd4; border-radius: 16px; background: rgba(255, 254, 250, .96); box-shadow: 0 12px 32px rgba(38, 57, 45, .16); text-align: center; transform: translate(-50%, -50%); }
 .turn-summary h2 { margin: 0 0 8px; font-size: clamp(1.05rem, 2.2vw, 1.6rem); }
@@ -160,8 +165,6 @@ body.in-game #content { width: 100%; min-height: 0; }
 .absolute-draw img { display: block; width: 100%; height: min(58dvh, 390px); object-fit: contain; }
 
 body.hand-focus .game-table { height: 58dvh; min-height: 400px; }
-body.hand-focus .played-card,
-body.hand-focus .empty-card { width: min(13dvh, 120px); height: min(18dvh, 170px); }
 body.hand-focus .hand-card { width: clamp(210px, 27vw, 320px); }
 body.hand-focus .hand-card img,
 body.hand-focus .game-bottom.controls-open .hand-card img { height: clamp(220px, 46dvh, 480px); }
@@ -192,8 +195,6 @@ body.hand-focus .game-bottom.controls-open .hand-card img { height: clamp(220px,
   .hand-card img { height: min(24dvh, 210px); }
   .game-bottom.controls-open .hand-card img { height: min(24dvh, 210px); }
   body.hand-focus .game-table { height: 620px; min-height: 620px; }
-  body.hand-focus .played-card,
-  body.hand-focus .empty-card { width: min(13dvh, 120px); height: min(18dvh, 170px); }
   body.hand-focus .hand-card { width: clamp(220px, 52vw, 280px); }
   body.hand-focus .hand-card img,
   body.hand-focus .game-bottom.controls-open .hand-card img { height: min(42dvh, 350px); }
