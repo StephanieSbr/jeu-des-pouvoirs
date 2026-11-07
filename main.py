@@ -177,6 +177,7 @@ class EtatPartie:
     en_jeu: Dict[str, CartePosee] = field(default_factory=dict)
     defausse: List[Carte] = field(default_factory=list)
     dernieres_defausses: List[int] = field(default_factory=list)
+    derniers_defausseurs: List[str] = field(default_factory=list)
     tour_index: int = 0
     joueurs_ayant_joue: Set[str] = field(default_factory=set)
     direction_15: Optional[DirectionScore] = None
@@ -501,6 +502,7 @@ class Jeu:
             self._trouver_dans_main(self._joueur_par_nom(nom), score_extra)
 
         # La 13 impose une défausse depuis la main avant le retour des cartes non défaussées.
+        defausseurs = list(proprietaires_avec_choix)
         for nom in proprietaires_avec_choix:
             joueur = self._joueur_par_nom(nom)
             extra = self._retirer_de_la_main(joueur, choix_13[nom])
@@ -514,6 +516,7 @@ class Jeu:
             score_carte = carte_posee.carte.score
             if score_carte in scores_a_defausser:
                 partie.defausse.append(carte_posee.carte)
+                defausseurs.append(carte_posee.proprietaire)
                 partie.journal.append("La carte {} est défaussée.".format(score_carte))
             else:
                 self._joueur_par_nom(carte_posee.proprietaire).main.append(carte_posee.carte)
@@ -522,6 +525,7 @@ class Jeu:
         partie.dernieres_defausses = [
             carte.score for carte in partie.defausse[defausse_avant_tour:]
         ]
+        partie.derniers_defausseurs = list(dict.fromkeys(defausseurs))
         if 13 in scores_a_defausser:
             partie.cartes_13_a_resoudre.clear()
 

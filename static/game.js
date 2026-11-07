@@ -197,6 +197,21 @@ function renderTable(state) {
     discards.append(node("span", `discard-chip color-${card.couleur}`, String(card.numero)));
   }
   table.append(discards);
+  if (state.resume_tour) {
+    const summary = node("section", "turn-summary");
+    summary.setAttribute("role", "status");
+    summary.setAttribute("aria-live", "polite");
+    summary.append(node("h2", "", `Tour remporté par ${state.resume_tour.gagnant}`));
+    summary.append(node(
+      "p",
+      "",
+      `Défausse${state.resume_tour.defausseurs.length > 1 ? "s" : ""} : ${
+        state.resume_tour.defausseurs.join(", ") || "personne"
+      }`,
+    ));
+    summary.append(node("p", "", `${state.resume_tour.commence} commence le prochain tour`));
+    table.append(summary);
+  }
 
   // Ancre la table sur soi ; l'ordre de jeu progresse dans le sens horaire.
   const players = [...state.joueurs];
@@ -243,6 +258,10 @@ function renderTable(state) {
 
 function renderHand(state, panel) {
   const cards = node("div", "hand");
+  const afficheControles = selectedCard !== null
+    && state.joueur_courant === state.vous
+    && !state.action_en_attente;
+  panel.classList.toggle("controls-open", afficheControles);
   for (const card of state.main) {
     const button = node("button", `hand-card${selectedCard === card.score ? " selected" : ""}`);
     button.type = "button";
@@ -258,7 +277,7 @@ function renderHand(state, panel) {
     cards.append(button);
   }
   panel.append(cards);
-  if (selectedCard !== null && state.joueur_courant === state.vous && !state.action_en_attente) {
+  if (afficheControles) {
     renderPlayControls(panel, state, selectedCard);
   }
 }
@@ -414,6 +433,12 @@ function renderChoose13(state) {
 
 function renderMatch(state) {
   const screen = node("div", "game-screen");
+  const rulesImage = document.createElement("img");
+  rulesImage.className = "rules-image";
+  rulesImage.src = "/regles.png";
+  rulesImage.alt = "Règles du jeu";
+  rulesImage.title = "Règles du jeu";
+  screen.append(rulesImage);
   const toolbar = node("div", "game-toolbar");
   const leave = node("button", "secondary", "Quitter");
   leave.type = "button";

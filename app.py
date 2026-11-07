@@ -316,6 +316,7 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
                 {"numero": score, "couleur": _couleur_affichage(score)}
                 for score in partie.dernieres_defausses
             ],
+            "resume_tour": None,
             "cartes_en_jeu": [
                 {
                     "devant": emplacement,
@@ -352,6 +353,12 @@ def _etat_public(salon: Salon, jeton: str) -> dict:
             etat["joueur_courant"] = jeu.joueur_courant.nom
         except RuntimeError:
             pass
+        if partie.nombre_tours and not partie.joueurs_ayant_joue:
+            etat["resume_tour"] = {
+                "gagnant": partie.dernier_joueur_a_remporter_tour,
+                "defausseurs": partie.derniers_defausseurs,
+                "commence": etat["joueur_courant"],
+            }
 
     action = salon.action_en_attente
     if action and jeton in (action["acteur_token"], action["cible_token"]):
@@ -392,6 +399,14 @@ def image_carte(score: int):
     if carte is None or not carte.image.is_file():
         return _api_erreur("Image de carte introuvable.", 404)
     return send_file(carte.image, mimetype="image/png", conditional=True)
+
+
+@app.get("/regles.png")
+def image_regles():
+    chemin = os.path.join(os.path.dirname(__file__), "images jeu", "regles.png")
+    if not os.path.isfile(chemin):
+        return _api_erreur("Image des règles introuvable.", 404)
+    return send_file(chemin, mimetype="image/png", conditional=True)
 
 
 @app.post("/api/salons")

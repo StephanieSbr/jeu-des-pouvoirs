@@ -19,6 +19,7 @@ class ConfigurationMatchTests(unittest.TestCase):
         jeu.terminer_tour()
 
         self.assertEqual(set(partie.dernieres_defausses), {1, 4, 8, 18})
+        self.assertEqual(set(partie.derniers_defausseurs), {"A", "B", "C", "D"})
 
     def test_four_players_keep_drawn_absolutes_and_get_five_cards(self):
         jeu = main.Jeu(["A", "B", "C", "D"])
@@ -113,7 +114,7 @@ class WebSalonTests(unittest.TestCase):
             self.rooms.clear()
 
     def test_turn_resolution_keeps_the_current_game_active_when_hands_remain(self):
-        from app import JoueurSalon, Salon, _resoudre_tour
+        from app import JoueurSalon, Salon, _etat_public, _resoudre_tour
 
         jeu = main.Jeu(["A", "B", "C", "D"])
         jeu.demarrer_match({"A": 30, "B": 31, "C": 34, "D": 35})
@@ -139,6 +140,11 @@ class WebSalonTests(unittest.TestCase):
         self.assertEqual(partie.nombre_tours, 1)
         self.assertTrue(all(joueur.main for joueur in jeu.joueurs))
         self.assertEqual(jeu.joueur_courant.nom, "D")
+        resume = _etat_public(salon, "A")["resume_tour"]
+        self.assertEqual(
+            resume,
+            {"gagnant": "D", "defausseurs": ["A", "D"], "commence": "D"},
+        )
 
     def test_turn_resolution_offers_the_next_deal_when_a_player_runs_out(self):
         from app import JoueurSalon, Salon, _resoudre_tour
@@ -234,10 +240,16 @@ class WebSalonTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.mimetype, "image/png")
 
+    def test_rules_image_is_served(self):
+        response = self.app.test_client().get("/regles.png")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/png")
+
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-6", response.data)
-        self.assertIn(b"style.css?v=20261107-5", response.data)
+        self.assertIn(b"game.js?v=20261107-8", response.data)
+        self.assertIn(b"style.css?v=20261107-8", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage
