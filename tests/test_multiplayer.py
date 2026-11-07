@@ -101,6 +101,40 @@ class ConfigurationMatchTests(unittest.TestCase):
             )
         )
 
+    def test_six_players_can_continue_past_three_parties_until_a_player_wins_twice(self):
+        jeu = main.Jeu(["A", "B", "C", "D", "E", "F"])
+        jeu.demarrer_match()
+
+        jeu.terminer_partie(joueur="A")
+        jeu.demarrer_partie()
+        jeu.terminer_partie(joueur="B")
+        jeu.demarrer_partie()
+        jeu.terminer_partie(joueur="C")
+        fourth_partie = jeu.demarrer_partie()
+
+        self.assertEqual(fourth_partie.numero, 4)
+        self.assertFalse(jeu.match_termine)
+
+        jeu.terminer_partie(joueur="A")
+
+        self.assertEqual(jeu.joueur_gagnant_match, "A")
+        self.assertTrue(jeu.match_termine)
+        with self.assertRaises(RuntimeError):
+            jeu.demarrer_partie()
+
+    def test_team_matches_keep_the_three_party_limit(self):
+        jeu = main.Jeu(["A", "B", "C", "D"])
+        jeu.demarrer_match({"A": 30, "B": 31, "C": 34, "D": 35})
+
+        jeu.terminer_partie(main.Equipe.A)
+        jeu.demarrer_partie()
+        jeu.terminer_partie(main.Equipe.B)
+        jeu.demarrer_partie()
+        jeu.terminer_partie(main.Equipe.A)
+
+        with self.assertRaises(RuntimeError):
+            jeu.demarrer_partie()
+
 
 class WebSalonTests(unittest.TestCase):
     def setUp(self):
@@ -175,6 +209,39 @@ class WebSalonTests(unittest.TestCase):
 
         self.assertEqual(salon.phase, "entre_parties")
         self.assertTrue(partie.terminee)
+
+    def test_six_player_room_offers_a_fourth_party(self):
+        from app import JoueurSalon, Salon, _resoudre_tour
+
+        names = ["A", "B", "C", "D", "E", "F"]
+        jeu = main.Jeu(names)
+        jeu.demarrer_match()
+        jeu.terminer_partie(joueur="A")
+        jeu.demarrer_partie()
+        jeu.terminer_partie(joueur="B")
+        partie = jeu.demarrer_partie()
+        partie.en_jeu = {}
+        for joueur, score in zip(jeu.joueurs, (17, 18, 19, 20, 25, 26)):
+            joueur.main.clear()
+            partie.en_jeu[joueur.nom] = main.CartePosee(
+                main.CARTES[score],
+                joueur.nom,
+                joueur.nom,
+            )
+        partie.joueurs_ayant_joue = set(names)
+        salon = Salon(
+            "ABC123",
+            6,
+            [JoueurSalon(nom, nom) for nom in names],
+            "A",
+            phase="active",
+            jeu=jeu,
+        )
+
+        _resoudre_tour(salon)
+
+        self.assertEqual(salon.phase, "entre_parties")
+        self.assertEqual(jeu.parties_jouees, 3)
 
     def _client(self):
         client = self.app.test_client()
@@ -340,8 +407,8 @@ class WebSalonTests(unittest.TestCase):
 
     def test_homepage_uses_versioned_frontend_assets(self):
         response = self.app.test_client().get("/")
-        self.assertIn(b"game.js?v=20261107-11", response.data)
-        self.assertIn(b"style.css?v=20261107-11", response.data)
+        self.assertIn(b"game.js?v=20261107-12", response.data)
+        self.assertIn(b"style.css?v=20261107-12", response.data)
 
     def test_display_colors_match_card_colors_and_black_for_17(self):
         from app import _couleur_affichage

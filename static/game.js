@@ -127,7 +127,9 @@ function setCardPickerDisabled(input, disabled) {
 
 function renderLobby() {
   clearRevelationTimer();
+  document.body.classList.remove("hand-focus");
   document.body.classList.remove("in-game");
+  window.scrollTo(0, 0);
   roomHeader.classList.add("hidden");
   gameRoot.classList.add("hidden");
   lobby.classList.remove("hidden");
@@ -309,9 +311,9 @@ function renderTable(state) {
     ...players.slice(0, selfIndex),
   ];
   const positions = {
-    4: [[50, 82], [8, 50], [50, 18], [92, 50]],
-    5: [[50, 82], [8, 58], [25, 18], [75, 18], [92, 58]],
-    6: [[50, 82], [8, 66], [8, 26], [50, 18], [92, 26], [92, 66]],
+    4: [[50, 72], [12, 50], [50, 28], [88, 50]],
+    5: [[50, 72], [12, 58], [25, 28], [75, 28], [88, 58]],
+    6: [[50, 72], [12, 66], [12, 26], [50, 28], [88, 26], [88, 66]],
   }[clockwise.length];
   clockwise.forEach((player, index) => {
     const seat = node("article", "player-seat");
@@ -586,6 +588,7 @@ function renderMatch(state) {
 function render(state, force = false) {
   const signature = JSON.stringify(state);
   if (!force && signature === lastState) return;
+  const scrollTop = window.scrollY;
   lastState = signature;
   lobby.classList.add("hidden");
   gameRoot.classList.remove("hidden");
@@ -598,6 +601,7 @@ function render(state, force = false) {
 
   const isPlaying = state.phase !== "attente";
   document.body.classList.toggle("in-game", isPlaying);
+  const handViewAvailable = !["attente", "tirage", "revelation"].includes(state.phase);
   roomHeader.classList.toggle("hidden", isPlaying);
   if (!isPlaying) renderRoomHeader(state);
   content.replaceChildren();
@@ -605,7 +609,21 @@ function render(state, force = false) {
   if (state.phase === "attente") renderWaiting(state);
   else if (state.phase === "tirage" || state.phase === "revelation") renderDraft(state);
   else renderMatch(state);
+  window.scrollTo(0, scrollTop);
+  updateHandFocus(handViewAvailable);
   if (state.phase !== "revelation") clearRevelationTimer();
+}
+
+function updateHandFocus(enabled = true) {
+  const maximumScroll = Math.max(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+  );
+  const focusThreshold = Math.min(window.innerHeight * 0.58, maximumScroll * 0.65);
+  document.body.classList.toggle(
+    "hand-focus",
+    enabled && maximumScroll > 0 && window.scrollY >= focusThreshold,
+  );
 }
 
 async function refresh() {
@@ -757,6 +775,9 @@ document.getElementById("join-form").addEventListener("submit", (event) => {
 
 if (document.querySelector('meta[name="has-room"]').content === "true") refresh();
 else renderLobby();
+
+window.addEventListener("scroll", () => updateHandFocus(), { passive: true });
+window.addEventListener("resize", () => updateHandFocus(), { passive: true });
 
 window.addEventListener("pagehide", () => {
   if (revelationTimer !== null) window.clearTimeout(revelationTimer);

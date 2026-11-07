@@ -239,9 +239,9 @@ def _resoudre_tour(salon: Salon) -> None:
         raise RuntimeError("La partie courante est introuvable.")
     if not partie.terminee:
         salon.phase = "active"
-    elif (
-        salon.jeu.match_termine
-        or salon.jeu.parties_jouees >= salon.jeu.NOMBRE_MAX_PARTIES
+    elif salon.jeu.match_termine or (
+        not salon.jeu.individuel
+        and salon.jeu.parties_jouees >= salon.jeu.NOMBRE_MAX_PARTIES
     ):
         salon.phase = "match_termine"
     else:

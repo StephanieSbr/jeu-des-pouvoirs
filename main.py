@@ -352,7 +352,10 @@ class Jeu:
             raise RuntimeError("La rencontre est déjà terminée.")
         if self.partie is not None and not self.partie.terminee:
             raise RuntimeError("La partie précédente n'est pas terminée.")
-        if self.parties_jouees >= self.NOMBRE_MAX_PARTIES:
+        if (
+            not self.individuel
+            and self.parties_jouees >= self.NOMBRE_MAX_PARTIES
+        ):
             raise RuntimeError("La rencontre ne peut pas dépasser trois parties.")
         if self.individuel and cartes_par_joueur != 5:
             if cartes_par_joueur is not None:
