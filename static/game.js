@@ -15,8 +15,6 @@ let lobbyPolling = null;
 let inRoom = false;
 let revelationTimer = null;
 let revelationKey = null;
-let hoveredCard = null;
-let focusedCard = null;
 
 function showNotice(message, error = false) {
   notice.replaceChildren();
@@ -47,36 +45,6 @@ function node(tag, className, text) {
   if (className) element.className = className;
   if (text !== undefined) element.textContent = text;
   return element;
-}
-
-const cardZoomPreview = node("div", "card-zoom-preview hidden");
-const cardZoomPreviewImage = document.createElement("img");
-cardZoomPreview.setAttribute("aria-hidden", "true");
-cardZoomPreviewImage.alt = "";
-cardZoomPreview.append(cardZoomPreviewImage);
-document.body.append(cardZoomPreview);
-
-function zoomableCardFromTarget(target) {
-  if (!(target instanceof Element)) return null;
-  const image = target.closest(".zoomable-card");
-  if (image) return image;
-  return target.closest(".hand-card, .card-choice")?.querySelector(".zoomable-card") || null;
-}
-
-function updateCardZoomPreview() {
-  const card = focusedCard || hoveredCard;
-  if (!card || !card.isConnected) {
-    cardZoomPreview.classList.add("hidden");
-    return;
-  }
-  cardZoomPreviewImage.src = card.currentSrc || card.src;
-  cardZoomPreview.classList.remove("hidden");
-}
-
-function clearCardZoomPreview() {
-  hoveredCard = null;
-  focusedCard = null;
-  updateCardZoomPreview();
 }
 
 function section(title, hint) {
@@ -135,7 +103,6 @@ function addCardPicker(parent, labelText, cards, name) {
     button.type = "button";
     button.setAttribute("aria-label", "Choisir cette carte");
     const image = document.createElement("img");
-    image.className = "zoomable-card";
     image.src = typeof card === "number" ? `/cartes/${score}.png` : card.image;
     image.alt = "Carte";
     button.append(image);
@@ -160,7 +127,7 @@ function setCardPickerDisabled(input, disabled) {
 
 function renderLobby() {
   clearRevelationTimer();
-  clearCardZoomPreview();
+  document.body.classList.remove("hand-focus");
   document.body.classList.remove("in-game");
   window.scrollTo(0, 0);
   roomHeader.classList.add("hidden");
@@ -246,7 +213,6 @@ function renderDraft(state) {
     const resultat = node("article", "absolute-draw");
     resultat.append(node("strong", "", tirage.nom));
     const image = document.createElement("img");
-    image.className = "zoomable-card";
     image.src = `/cartes/${tirage.score}.png`;
     image.alt = `Carte absolue tirée par ${tirage.nom}`;
     resultat.append(image);
@@ -364,7 +330,7 @@ function renderTable(state) {
     seat.append(name, node("span", "seat-count", String(player.cartes_en_main)));
     if (player.carte_devant !== null) {
       const card = document.createElement("img");
-      card.className = "played-card zoomable-card";
+      card.className = "played-card";
       card.src = `/cartes/${player.carte_devant}.png`;
       card.alt = `Carte ${player.carte_devant} posée par ${player.nom}`;
       card.tabIndex = 0;
@@ -388,7 +354,6 @@ function renderHand(state, panel) {
     button.type = "button";
     button.disabled = state.joueur_courant !== state.vous || !!state.action_en_attente;
     const img = document.createElement("img");
-    img.className = "zoomable-card";
     img.src = card.image;
     img.alt = "Carte de ta main";
     button.append(img);
@@ -577,7 +542,6 @@ function renderMatch(state) {
     const reveal = node("div", "private-reveal");
     reveal.append(node("span", "", state.messages_prives.texte));
     const image = document.createElement("img");
-    image.className = "zoomable-card";
     image.src = state.messages_prives.image;
     image.alt = "Carte révélée";
     reveal.append(image);
@@ -638,16 +602,29 @@ function render(state, force = false) {
 
   const isPlaying = state.phase !== "attente";
   document.body.classList.toggle("in-game", isPlaying);
+  const handViewAvailable = !["attente", "tirage", "revelation"].includes(state.phase);
   roomHeader.classList.toggle("hidden", isPlaying);
   if (!isPlaying) renderRoomHeader(state);
-  clearCardZoomPreview();
   content.replaceChildren();
 
   if (state.phase === "attente") renderWaiting(state);
   else if (state.phase === "tirage" || state.phase === "revelation") renderDraft(state);
   else renderMatch(state);
   window.scrollTo(0, scrollTop);
+  updateHandFocus(handViewAvailable);
   if (state.phase !== "revelation") clearRevelationTimer();
+}
+
+function updateHandFocus(enabled = true) {
+  const maximumScroll = Math.max(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+  );
+  const focusThreshold = Math.min(window.innerHeight * 0.58, maximumScroll * 0.65);
+  document.body.classList.toggle(
+    "hand-focus",
+    enabled && maximumScroll > 0 && window.scrollY >= focusThreshold,
+  );
 }
 
 async function refresh() {
@@ -800,30 +777,8 @@ document.getElementById("join-form").addEventListener("submit", (event) => {
 if (document.querySelector('meta[name="has-room"]').content === "true") refresh();
 else renderLobby();
 
-document.addEventListener("mouseover", (event) => {
-  const card = zoomableCardFromTarget(event.target);
-  if (!card || card === hoveredCard) return;
-  hoveredCard = card;
-  updateCardZoomPreview();
-});
-
-document.addEventListener("mouseout", (event) => {
-  const leaving = zoomableCardFromTarget(event.target);
-  if (!leaving || zoomableCardFromTarget(event.relatedTarget) === leaving) return;
-  if (hoveredCard === leaving) hoveredCard = null;
-  updateCardZoomPreview();
-});
-
-document.addEventListener("focusin", (event) => {
-  focusedCard = zoomableCardFromTarget(event.target);
-  updateCardZoomPreview();
-});
-
-document.addEventListener("focusout", (event) => {
-  if (focusedCard !== zoomableCardFromTarget(event.target)) return;
-  focusedCard = zoomableCardFromTarget(event.relatedTarget);
-  updateCardZoomPreview();
-});
+window.addEventListener("scroll", () => updateHandFocus(), { passive: true });
+window.addEventListener("resize", () => updateHandFocus(), { passive: true });
 
 window.addEventListener("pagehide", () => {
   if (revelationTimer !== null) window.clearTimeout(revelationTimer);
